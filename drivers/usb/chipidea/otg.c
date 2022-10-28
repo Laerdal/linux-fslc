@@ -130,13 +130,26 @@ enum ci_role ci_otg_role(struct ci_hdrc *ci)
 
 void ci_handle_vbus_change(struct ci_hdrc *ci)
 {
+	int ret;
+	char *envp[3], *buf;
 	if (!ci->is_otg)
 		return;
 
-	if (hw_read_otgsc(ci, OTGSC_BSV) && !ci->vbus_active)
+	buf = kzalloc(64, GFP_ATOMIC);
+	envp[0] = "NAME=OTGVBUS";
+	envp[1] = buf;
+	envp[2] = NULL;
+	if (hw_read_otgsc(ci, OTGSC_BSV) && !ci->vbus_active) {
 		usb_gadget_vbus_connect(&ci->gadget);
-	else if (!hw_read_otgsc(ci, OTGSC_BSV) && ci->vbus_active)
+		sprintf(buf, "STATE=VBUS_ON");
+	} else if (!hw_read_otgsc(ci, OTGSC_BSV) && ci->vbus_active) {
 		usb_gadget_vbus_disconnect(&ci->gadget);
+		sprintf(buf, "STATE=VBUS_OFF");
+	}
+	if (ci_otg_role(ci) == CI_ROLE_GADGET)
+		ret = kobject_uevent_env(&ci->dev->kobj, KOBJ_CHANGE, envp);
+	dev_dbg(ci->dev, "%s, kevent status is %d\n", __func__, ret);
+	kfree(buf);
 }
 
 /**
