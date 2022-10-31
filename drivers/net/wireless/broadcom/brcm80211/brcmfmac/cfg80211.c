@@ -6610,7 +6610,7 @@ brcmf_notify_mic_status(struct brcmf_if *ifp,
 	return 0;
 }
 
-static s32 brcmf_notify_rssi(struct brcmf_if *ifp,
+__maybe_unused s32 brcmf_notify_rssi(struct brcmf_if *ifp,
 			     const struct brcmf_event_msg *e, void *data)
 {
 	struct brcmf_cfg80211_vif *vif = ifp->vif;
@@ -6751,7 +6751,9 @@ static void brcmf_register_event_handlers(struct brcmf_cfg80211_info *cfg)
 			    brcmf_p2p_notify_action_tx_complete);
 	brcmf_fweh_register(cfg->pub, BRCMF_E_PSK_SUP,
 			    brcmf_notify_connect_status);
+#ifndef CONFIG_BRCMFMAC_NO_RSSI
 	brcmf_fweh_register(cfg->pub, BRCMF_E_RSSI, brcmf_notify_rssi);
+#endif
 }
 
 static void brcmf_deinit_priv_mem(struct brcmf_cfg80211_info *cfg)
