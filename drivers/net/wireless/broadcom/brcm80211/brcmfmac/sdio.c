@@ -113,6 +113,10 @@ struct rte_console {
 #include "debug.h"
 #include "tracepoint.h"
 
+static int brcmf_sdiod_no_bus_sleep = 1;
+module_param_named(no_bus_sleep, brcmf_sdiod_no_bus_sleep, int, 0);
+MODULE_PARM_DESC(no_bus_sleep, "No bus sleep allowed [SDIO]");
+
 #define TXQLEN		2048	/* bulk tx queue length */
 #define TXHI		(TXQLEN - 256)	/* turn on flow control above TXHI */
 #define TXLOW		(TXHI - 256)	/* turn off flow control below TXLOW */
@@ -969,6 +973,10 @@ brcmf_sdio_bus_sleep(struct brcmf_sdio *bus, bool sleep, bool pendok)
 		  (sleep ? "SLEEP" : "WAKE"),
 		  (bus->sleeping ? "SLEEP" : "WAKE"));
 
+	if (brcmf_sdiod_no_bus_sleep && sleep) {
+		brcmf_dbg(SDIO, "Sleep disabled\n");
+		return 0;
+	}
 	/* If SR is enabled control bus state with KSO */
 	if (bus->sr_enabled) {
 		/* Done if we're already in the requested state */
@@ -4196,6 +4204,7 @@ static const struct brcmf_bus_ops brcmf_sdio_bus_ops = {
 
 #define BRCMF_SDIO_FW_CODE	0
 #define BRCMF_SDIO_FW_NVRAM	1
+static int fw_ready = 0;
 
 static void brcmf_sdio_firmware_callback(struct device *dev, int err,
 					 struct brcmf_fw_request *fwreq)
@@ -4391,7 +4400,7 @@ static void brcmf_sdio_firmware_callback(struct device *dev, int err,
 		brcmf_err("brcmf_attach failed\n");
 		goto free;
 	}
-
+	fw_ready = 1;
 	/* ready */
 	return;
 
@@ -4408,6 +4417,12 @@ fail:
 	device_release_driver(&sdiod->func2->dev);
 	device_release_driver(dev);
 }
+
+int brcmf_sdio_fw_ready(void)
+{
+	return fw_ready;
+}
+EXPORT_SYMBOL(brcmf_sdio_fw_ready);
 
 static struct brcmf_fw_request *
 brcmf_sdio_prepare_fw_request(struct brcmf_sdio *bus)

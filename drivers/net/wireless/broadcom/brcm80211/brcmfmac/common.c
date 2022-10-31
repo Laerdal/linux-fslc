@@ -20,6 +20,7 @@
 #include "of.h"
 #include "firmware.h"
 #include "chip.h"
+#include "brcm_hw_ids.h"
 
 MODULE_AUTHOR("Broadcom Corporation");
 MODULE_DESCRIPTION("Broadcom 802.11 wireless LAN fullmac driver.");
@@ -250,10 +251,21 @@ int brcmf_c_preinit_dcmds(struct brcmf_if *ifp)
 				ri->chipname, sizeof(ri->chipname));
 
 	/* Do any CLM downloading */
-	err = brcmf_c_process_clm_blob(ifp);
-	if (err < 0) {
-		bphy_err(drvr, "download CLM blob file failed, %d\n", err);
-		goto done;
+	
+	switch (ri->deviceid) {
+	case BRCM_CC_43241_CHIP_ID:
+	case 0x4374:
+		bphy_info_once(drvr, "Device id is 0x%04x, no blob\n", ri->deviceid);
+		break;
+
+	default:
+		err = brcmf_c_process_clm_blob(ifp);
+		if (err < 0) {
+			bphy_err(drvr, "download CLM blob file failed, %d\n",
+				 err);
+			goto done;
+		}
+		break;
 	}
 
 	/* query for 'ver' to get version info from firmware */

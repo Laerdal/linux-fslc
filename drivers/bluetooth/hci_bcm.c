@@ -56,6 +56,7 @@
 struct bcm_device_data {
 	bool	no_early_set_baudrate;
 	bool	drive_rts_on_open;
+	bool wait_for_wifi;
 };
 
 /**
@@ -1441,12 +1442,20 @@ static struct platform_driver bcm_driver = {
 	},
 };
 
+extern int brcmf_sdio_fw_ready(void);
+
 static int bcm_serdev_probe(struct serdev_device *serdev)
 {
 	struct bcm_device *bcmdev;
-	const struct bcm_device_data *data;
+	const struct bcm_device_data *data =
+		device_get_match_data(&serdev->dev);
 	int err;
 
+	if (data && data->wait_for_wifi && !brcmf_sdio_fw_ready()) {
+		dev_info(&serdev->dev, "Deferring until wifi ready\n");
+		return -EPROBE_DEFER;
+	}
+	dev_info(&serdev->dev, "Wifi ready\n");
 	bcmdev = devm_kzalloc(&serdev->dev, sizeof(*bcmdev), GFP_KERNEL);
 	if (!bcmdev)
 		return -ENOMEM;
@@ -1507,6 +1516,11 @@ static struct bcm_device_data bcm43438_device_data = {
 	.drive_rts_on_open = true,
 };
 
+static struct bcm_device_data bcm43241_device_data = {
+	.wait_for_wifi = true,
+	.no_early_set_baudrate = true,
+};
+
 static const struct of_device_id bcm_bluetooth_of_match[] = {
 	{ .compatible = "brcm,bcm20702a1" },
 	{ .compatible = "brcm,bcm4329-bt" },
@@ -1519,6 +1533,7 @@ static const struct of_device_id bcm_bluetooth_of_match[] = {
 	{ .compatible = "brcm,bcm43540-bt", .data = &bcm4354_device_data },
 	{ .compatible = "brcm,bcm4335a0" },
 	{ .compatible = "infineon,cyw55572-bt" },
+	{ .compatible = "brcm,bcm43241-bt", .data = &bcm43241_device_data },
 	{ },
 };
 MODULE_DEVICE_TABLE(of, bcm_bluetooth_of_match);
