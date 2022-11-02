@@ -1419,7 +1419,7 @@ static int wm8960_i2c_probe(struct i2c_client *i2c,
 		if (PTR_ERR(wm8960->mclk) == -EPROBE_DEFER)
 			return -EPROBE_DEFER;
 	}
-
+	wm8960->freq_in = clk_get_rate(wm8960->mclk);
 	wm8960->regmap = devm_regmap_init_i2c(i2c, &wm8960_regmap);
 	if (IS_ERR(wm8960->regmap))
 		return PTR_ERR(wm8960->regmap);

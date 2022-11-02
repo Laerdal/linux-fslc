@@ -201,6 +201,10 @@ static int imx_pcm1681_late_probe(struct snd_soc_card *card)
 
 	switch (data->board_info->cpu_type) {
 	case CPUTYPE_IMX6:
+		dev_info(card->dev, "Set ESAI clk to %d\n", data->clk_frequency);
+		ret = snd_soc_dai_set_sysclk(cpu_dai, ESAI_HCKT_EXTAL,
+					     data->clk_frequency,
+					     SND_SOC_CLOCK_IN);
 		break;
 
 	case CPUTYPE_IMX8:
@@ -208,15 +212,15 @@ static int imx_pcm1681_late_probe(struct snd_soc_card *card)
 		ret = snd_soc_dai_set_sysclk(cpu_dai, FSL_SAI_CLK_MAST1,
 					     data->clk_frequency,
 					     SND_SOC_CLOCK_OUT);
-		if (ret) {
-			dev_err(card->dev,
-				"failed to set codec sysclk: %d\n", ret);
-			goto out;
-		}
 		break;
 
 	default:
 		break;
+	}
+	if (ret) {
+		dev_err(card->dev,
+			"failed to set cpu sysclk: %d\n", ret);
+		goto out;
 	}
 
 out:
@@ -271,12 +275,11 @@ static int imx_pcm1681_probe(struct platform_device *pdev)
 		goto cleanup;
 	}
 	codec_dev = of_find_i2c_device_by_node(codec_np);
-	if (!codec_dev || !codec_dev->dev.driver) {
-		dev_dbg(&pdev->dev, "failed to find codec platform device - deferring\n");
+	if (!codec_dev) {
+		dev_dbg(&pdev->dev, "failed (%ld) to find codec platform device\n", PTR_ERR(codec_dev));
 		ret = -EPROBE_DEFER;
 		goto cleanup;
 	}
-
 
 	data = devm_kzalloc(&pdev->dev, sizeof(*data), GFP_KERNEL);
 	if (!data) {

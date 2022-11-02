@@ -417,22 +417,13 @@ config SND_SOC_LM_PCM1681
     depends on OF && I2C && LINKBOX_PLUS_PSY
     select SND_SOC_PCM1681
     select SND_SOC_IMX_PCM_DMA
-    select SND_SOC_FSL_SAI
+    select SND_SOC_FSL_ESAI
+	select SND_SOC_FSL_SAI
     select SND_SOC_FSL_UTILS
     help
      SoC Audio support for Laerdal boards with pcm1681
      Say Y if you want to add support for SoC audio on an i.MX board with
      a 1681 codec.
-
-config SND_SOC_LM_SIMPADP
-    tristate "SoC Audio support for Laerdal Plus (wm8960)"
-    depends on OF && I2C
-    select SND_SOC_WM8960
-    select SND_SOC_IMX_PCM_DMA
-    select SND_SOC_FSL_UTILS
-    select SND_SOC_FSL_SAI
-    help
-     Say Y if you want Laerdal Plus boards with wm8960
 
 config SND_SOC_LM_SGTL5000
     tristate "SoC Audio support for Laerdal Plus (sgtl5000)"
@@ -443,6 +434,17 @@ config SND_SOC_LM_SGTL5000
     select SND_SOC_FSL_SAI
     help
      Say Y if you want Laerdal Plus boards with sgtl5000
+
+config SND_SOC_LM_SIMPADP
+    tristate "SoC Audio support for Laerdal Plus (wm8960)"
+    depends on OF && I2C
+    select SND_SOC_WM8960
+    select SND_SOC_IMX_PCM_DMA
+    select SND_SOC_FSL_UTILS
+    select SND_SOC_FSL_SSI
+    help
+     Say Y if you want Laerdal Plus boards with wm8960
+
 endif # SND_IMX_SOC
 
 endmenu
