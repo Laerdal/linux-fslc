@@ -118,6 +118,7 @@ enum bq27xxx_reg_index {
 	BQ27XXX_REG_SOC,	/* State-of-Charge */
 	BQ27XXX_REG_DCAP,	/* Design Capacity */
 	BQ27XXX_REG_AP,		/* Average Power */
+	BQ27XXX_REG_SOH,	/* Health */
 	BQ27XXX_DM_CTRL,	/* Block Data Control */
 	BQ27XXX_DM_CLASS,	/* Data Class */
 	BQ27XXX_DM_BLOCK,	/* Data Block */
@@ -154,6 +155,7 @@ static u8
 		[BQ27XXX_REG_SOC] = 0x0b,
 		[BQ27XXX_REG_DCAP] = 0x76,
 		[BQ27XXX_REG_AP] = 0x24,
+		[BQ27XXX_REG_SOH] = INVALID_REG_ADDR,
 		[BQ27XXX_DM_CTRL] = INVALID_REG_ADDR,
 		[BQ27XXX_DM_CLASS] = INVALID_REG_ADDR,
 		[BQ27XXX_DM_BLOCK] = INVALID_REG_ADDR,
@@ -179,6 +181,7 @@ static u8
 		[BQ27XXX_REG_SOC] = 0x0b,
 		[BQ27XXX_REG_DCAP] = 0x76,
 		[BQ27XXX_REG_AP] = INVALID_REG_ADDR,
+		[BQ27XXX_REG_SOH] = INVALID_REG_ADDR,
 		[BQ27XXX_DM_CTRL] = INVALID_REG_ADDR,
 		[BQ27XXX_DM_CLASS] = INVALID_REG_ADDR,
 		[BQ27XXX_DM_BLOCK] = INVALID_REG_ADDR,
@@ -204,6 +207,7 @@ static u8
 		[BQ27XXX_REG_SOC] = 0x2c,
 		[BQ27XXX_REG_DCAP] = 0x3c,
 		[BQ27XXX_REG_AP] = INVALID_REG_ADDR,
+		[BQ27XXX_REG_SOH] = INVALID_REG_ADDR,
 		BQ27XXX_DM_REG_ROWS,
 	},
 #define bq2751x_regs bq27510g3_regs
@@ -227,6 +231,7 @@ static u8
 		[BQ27XXX_REG_SOC] = 0x2c,
 		[BQ27XXX_REG_DCAP] = 0x3c,
 		[BQ27XXX_REG_AP] = 0x24,
+		[BQ27XXX_REG_SOH] = INVALID_REG_ADDR,
 		BQ27XXX_DM_REG_ROWS,
 	},
 #define bq27510g1_regs bq27500_regs
@@ -250,6 +255,7 @@ static u8
 		[BQ27XXX_REG_SOC] = 0x20,
 		[BQ27XXX_REG_DCAP] = 0x2e,
 		[BQ27XXX_REG_AP] = INVALID_REG_ADDR,
+		[BQ27XXX_REG_SOH] = INVALID_REG_ADDR,
 		BQ27XXX_DM_REG_ROWS,
 	},
 	bq27520g1_regs[BQ27XXX_REG_MAX] = {
@@ -271,6 +277,7 @@ static u8
 		[BQ27XXX_REG_SOC] = 0x2c,
 		[BQ27XXX_REG_DCAP] = 0x3c,
 		[BQ27XXX_REG_AP] = 0x24,
+		[BQ27XXX_REG_SOH] = INVALID_REG_ADDR,
 		BQ27XXX_DM_REG_ROWS,
 	},
 	bq27520g2_regs[BQ27XXX_REG_MAX] = {
@@ -292,6 +299,7 @@ static u8
 		[BQ27XXX_REG_SOC] = 0x2c,
 		[BQ27XXX_REG_DCAP] = 0x3c,
 		[BQ27XXX_REG_AP] = 0x24,
+		[BQ27XXX_REG_SOH] = INVALID_REG_ADDR,
 		BQ27XXX_DM_REG_ROWS,
 	},
 	bq27520g3_regs[BQ27XXX_REG_MAX] = {
@@ -313,6 +321,7 @@ static u8
 		[BQ27XXX_REG_SOC] = 0x2c,
 		[BQ27XXX_REG_DCAP] = 0x3c,
 		[BQ27XXX_REG_AP] = 0x24,
+		[BQ27XXX_REG_SOH] = INVALID_REG_ADDR,
 		BQ27XXX_DM_REG_ROWS,
 	},
 	bq27520g4_regs[BQ27XXX_REG_MAX] = {
@@ -355,6 +364,7 @@ static u8
 		[BQ27XXX_REG_SOC] = INVALID_REG_ADDR,
 		[BQ27XXX_REG_DCAP] = INVALID_REG_ADDR,
 		[BQ27XXX_REG_AP] = INVALID_REG_ADDR,
+		[BQ27XXX_REG_SOH] = INVALID_REG_ADDR,
 		[BQ27XXX_DM_CTRL] = INVALID_REG_ADDR,
 		[BQ27XXX_DM_CLASS] = INVALID_REG_ADDR,
 		[BQ27XXX_DM_BLOCK] = INVALID_REG_ADDR,
@@ -402,6 +412,28 @@ static u8
 		[BQ27XXX_REG_SOC] = 0x2c,
 		[BQ27XXX_REG_DCAP] = 0x3c,
 		[BQ27XXX_REG_AP] = 0x24,
+		[BQ27XXX_REG_SOH] = INVALID_REG_ADDR,
+		BQ27XXX_DM_REG_ROWS,
+	},
+	bq27541g1_regs[BQ27XXX_REG_MAX] = {
+		[BQ27XXX_REG_CTRL] = 0x00,
+		[BQ27XXX_REG_TEMP] = 0x06,
+		[BQ27XXX_REG_INT_TEMP] = 0x28,
+		[BQ27XXX_REG_VOLT] = 0x08,
+		[BQ27XXX_REG_AI] = 0x14,
+		[BQ27XXX_REG_FLAGS] = 0x0a,
+		[BQ27XXX_REG_TTE] = 0x16,
+		[BQ27XXX_REG_TTF] = INVALID_REG_ADDR,
+		[BQ27XXX_REG_TTES] = INVALID_REG_ADDR,
+		[BQ27XXX_REG_TTECP] = INVALID_REG_ADDR,
+		[BQ27XXX_REG_NAC] = 0x0c,
+		[BQ27XXX_REG_FCC] = 0x12,
+		[BQ27XXX_REG_CYCT] = 0x2a,
+		[BQ27XXX_REG_AE] = INVALID_REG_ADDR,
+		[BQ27XXX_REG_SOC] = 0x2c,
+		[BQ27XXX_REG_SOH] = 0x2e,
+		[BQ27XXX_REG_DCAP] = 0x3c,
+		[BQ27XXX_REG_AP] = 0x24,
 		BQ27XXX_DM_REG_ROWS,
 	},
 #define bq27542_regs bq27541_regs
@@ -426,6 +458,7 @@ static u8
 		[BQ27XXX_REG_SOC] = 0x2c,
 		[BQ27XXX_REG_DCAP] = INVALID_REG_ADDR,
 		[BQ27XXX_REG_AP] = 0x24,
+		[BQ27XXX_REG_SOH] = INVALID_REG_ADDR,
 		BQ27XXX_DM_REG_ROWS,
 	},
 	bq27421_regs[BQ27XXX_REG_MAX] = {
@@ -447,6 +480,7 @@ static u8
 		[BQ27XXX_REG_SOC] = 0x1c,
 		[BQ27XXX_REG_DCAP] = 0x3c,
 		[BQ27XXX_REG_AP] = 0x18,
+		[BQ27XXX_REG_SOH] = INVALID_REG_ADDR,
 		BQ27XXX_DM_REG_ROWS,
 	},
 	bq27426_regs[BQ27XXX_REG_MAX] = {
@@ -493,6 +527,7 @@ static u8
 		[BQ27XXX_REG_SOC] = 0x2c,
 		[BQ27XXX_REG_DCAP] = 0x3c,
 		[BQ27XXX_REG_AP] = 0x22,
+		[BQ27XXX_REG_SOH] = INVALID_REG_ADDR,
 		BQ27XXX_DM_REG_ROWS,
 	},
 	bq28z610_regs[BQ27XXX_REG_MAX] = {
@@ -514,6 +549,7 @@ static u8
 		[BQ27XXX_REG_SOC] = 0x2c,
 		[BQ27XXX_REG_DCAP] = 0x3c,
 		[BQ27XXX_REG_AP] = 0x22,
+		[BQ27XXX_REG_SOH] = 0x2e,
 		BQ27XXX_DM_REG_ROWS,
 	},
 	bq34z100_regs[BQ27XXX_REG_MAX] = {
@@ -535,6 +571,7 @@ static u8
 		[BQ27XXX_REG_SOC] = 0x02,
 		[BQ27XXX_REG_DCAP] = 0x3c,
 		[BQ27XXX_REG_AP] = 0x22,
+		[BQ27XXX_REG_SOH] = INVALID_REG_ADDR,
 		BQ27XXX_DM_REG_ROWS,
 	},
 	bq78z100_regs[BQ27XXX_REG_MAX] = {
@@ -751,6 +788,26 @@ static enum power_supply_property bq27541_props[] = {
 	POWER_SUPPLY_PROP_HEALTH,
 	POWER_SUPPLY_PROP_MANUFACTURER,
 };
+
+static enum power_supply_property bq27541g1_props[] = {
+	POWER_SUPPLY_PROP_STATUS,
+	POWER_SUPPLY_PROP_PRESENT,
+	POWER_SUPPLY_PROP_VOLTAGE_NOW,
+	POWER_SUPPLY_PROP_CURRENT_NOW,
+	POWER_SUPPLY_PROP_CAPACITY,
+	POWER_SUPPLY_PROP_CAPACITY_LEVEL,
+	POWER_SUPPLY_PROP_TEMP,
+	POWER_SUPPLY_PROP_TIME_TO_EMPTY_NOW,
+	POWER_SUPPLY_PROP_TECHNOLOGY,
+	POWER_SUPPLY_PROP_CHARGE_FULL,
+	POWER_SUPPLY_PROP_CHARGE_NOW,
+	POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN,
+	POWER_SUPPLY_PROP_CYCLE_COUNT,
+	POWER_SUPPLY_PROP_POWER_AVG,
+	POWER_SUPPLY_PROP_HEALTH,
+	POWER_SUPPLY_PROP_HEALTH_PERCENT,
+	POWER_SUPPLY_PROP_MANUFACTURER,
+};
 #define bq27542_props bq27541_props
 #define bq27546_props bq27541_props
 #define bq27742_props bq27541_props
@@ -843,6 +900,7 @@ static enum power_supply_property bq28z610_props[] = {
 	POWER_SUPPLY_PROP_CYCLE_COUNT,
 	POWER_SUPPLY_PROP_POWER_AVG,
 	POWER_SUPPLY_PROP_HEALTH,
+	POWER_SUPPLY_PROP_HEALTH_PERCENT,
 	POWER_SUPPLY_PROP_MANUFACTURER,
 };
 
@@ -932,6 +990,7 @@ static struct bq27xxx_dm_reg bq27500_dm_regs[] = {
 #define bq27542_dm_regs 0
 #define bq27546_dm_regs 0
 #define bq27742_dm_regs 0
+#define bq27541g1_dm_regs 0
 
 #if 0 /* not yet tested */
 static struct bq27xxx_dm_reg bq27545_dm_regs[] = {
@@ -1031,6 +1090,7 @@ static struct {
 	[BQ27530]   = BQ27XXX_DATA(bq27530,   0         , BQ27XXX_O_UTOT),
 	[BQ27531]   = BQ27XXX_DATA(bq27531,   0         , BQ27XXX_O_UTOT),
 	[BQ27541]   = BQ27XXX_DATA(bq27541,   0         , BQ27XXX_O_OTDC),
+	[BQ27541G1] = BQ27XXX_DATA(bq27541g1, 0         , BQ27XXX_O_OTDC),
 	[BQ27542]   = BQ27XXX_DATA(bq27542,   0         , BQ27XXX_O_OTDC),
 	[BQ27546]   = BQ27XXX_DATA(bq27546,   0         , BQ27XXX_O_OTDC),
 	[BQ27742]   = BQ27XXX_DATA(bq27742,   0         , BQ27XXX_O_OTDC),
@@ -1046,6 +1106,7 @@ static struct {
 	[BQ34Z100]  = BQ27XXX_DATA(bq34z100,  0         , BQ27XXX_O_OTDC | BQ27XXX_O_SOC_SI | \
 							  BQ27XXX_O_HAS_CI | BQ27XXX_O_MUL_CHEM),
 	[BQ78Z100]  = BQ27XXX_DATA(bq78z100,  0         , BQ27Z561_O_BITS),
+	[BQ27_SIMPAD] = BQ27XXX_DATA(bq27541,   0         , BQ27XXX_O_OTDC),
 };
 
 static DEFINE_MUTEX(bq27xxx_list_lock);
@@ -2116,6 +2177,9 @@ static int bq27xxx_battery_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_HEALTH:
 		ret = bq27xxx_simple_value(di->cache.health, val);
 		break;
+	case POWER_SUPPLY_PROP_HEALTH_PERCENT:
+		ret = bq27xxx_simple_value(di->cache.soh, val);
+		break;
 	case POWER_SUPPLY_PROP_MANUFACTURER:
 		val->strval = BQ27XXX_MANUFACTURER;
 		break;
@@ -2149,6 +2213,31 @@ int bq27xxx_battery_setup(struct bq27xxx_device_info *di)
 	di->unseal_key = bq27xxx_chip_data[di->chip].unseal_key;
 	di->dm_regs    = bq27xxx_chip_data[di->chip].dm_regs;
 	di->opts       = bq27xxx_chip_data[di->chip].opts;
+
+	if (di->chip == BQ27_SIMPAD) {
+		int res = bq27xxx_write(di, di->regs[BQ27XXX_REG_CTRL], 0x0001,
+				    false);
+		if (res < 0) {
+			dev_err(di->dev,
+				"Can not write to control reg (err: %d)\n",
+				res);
+		}
+		res = bq27xxx_read(di, di->regs[BQ27XXX_REG_CTRL], false);
+		dev_info(di->dev, "Simpad battery is 0x%0x\n", res);
+		switch (res) {
+		case 0x541:
+			di->chip = BQ27541G1;
+			break;
+
+		default:
+			di->chip = BQ28Z610;
+			break;
+		}
+		di->regs       = bq27xxx_chip_data[di->chip].regs;
+		di->unseal_key = bq27xxx_chip_data[di->chip].unseal_key;
+		di->dm_regs    = bq27xxx_chip_data[di->chip].dm_regs;
+		di->opts       = bq27xxx_chip_data[di->chip].opts;
+	}
 
 	psy_desc = devm_kzalloc(di->dev, sizeof(*psy_desc), GFP_KERNEL);
 	if (!psy_desc)

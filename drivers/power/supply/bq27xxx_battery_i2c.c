@@ -250,6 +250,7 @@ static const struct i2c_device_id bq27xxx_i2c_id_table[] = {
 	{ "bq27530", BQ27530 },
 	{ "bq27531", BQ27531 },
 	{ "bq27541", BQ27541 },
+	{ "bq27541g1", BQ27541G1 },
 	{ "bq27542", BQ27542 },
 	{ "bq27546", BQ27546 },
 	{ "bq27742", BQ27742 },
@@ -264,6 +265,7 @@ static const struct i2c_device_id bq27xxx_i2c_id_table[] = {
 	{ "bq28z610", BQ28Z610 },
 	{ "bq34z100", BQ34Z100 },
 	{ "bq78z100", BQ78Z100 },
+	{ "bq27simpad", BQ27_SIMPAD},
 	{},
 };
 MODULE_DEVICE_TABLE(i2c, bq27xxx_i2c_id_table);
@@ -287,6 +289,7 @@ static const struct of_device_id bq27xxx_battery_i2c_of_match_table[] = {
 	{ .compatible = "ti,bq27530" },
 	{ .compatible = "ti,bq27531" },
 	{ .compatible = "ti,bq27541" },
+	{ .compatible = "ti,bq27541g1" },
 	{ .compatible = "ti,bq27542" },
 	{ .compatible = "ti,bq27546" },
 	{ .compatible = "ti,bq27742" },
@@ -301,6 +304,7 @@ static const struct of_device_id bq27xxx_battery_i2c_of_match_table[] = {
 	{ .compatible = "ti,bq28z610" },
 	{ .compatible = "ti,bq34z100" },
 	{ .compatible = "ti,bq78z100" },
+	{ .compatible = "dr,bq27simpad" },
 	{},
 };
 MODULE_DEVICE_TABLE(of, bq27xxx_battery_i2c_of_match_table);
