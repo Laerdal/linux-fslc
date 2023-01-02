@@ -79,6 +79,8 @@ snd-soc-imx-rpmsg-objs := imx-rpmsg.o
 snd-soc-imx-card-objs := imx-card.o
 snd-soc-imx-pcm512x-objs := imx-pcm512x.o
 snd-soc-imx6qdl-hdmi-objs := imx6qdl-hdmi.o
+snd-soc-lm-pcm1681-objs := imx-pcm1681.o
+snd-soc-lm-wm8962-objs := lm-imx-wm8962.o
 
 obj-$(CONFIG_SND_SOC_EUKREA_TLV320) += snd-soc-eukrea-tlv320.o
 obj-$(CONFIG_SND_SOC_IMX_ES8328) += snd-soc-imx-es8328.o
@@ -90,5 +92,7 @@ obj-$(CONFIG_SND_SOC_IMX_RPMSG) += snd-soc-imx-rpmsg.o
 obj-$(CONFIG_SND_SOC_IMX_CARD) += snd-soc-imx-card.o
 obj-$(CONFIG_SND_SOC_IMX_PCM512X) += snd-soc-imx-pcm512x.o
 obj-$(CONFIG_SND_SOC_IMX6QDL_HDMI) += snd-soc-imx6qdl-hdmi.o
+obj-$(CONFIG_SND_SOC_LM_PCM1681) += snd-soc-lm-pcm1681.o
+obj-$(CONFIG_SND_SOC_LM_SIMPADP) += snd-soc-lm-wm8962.o
 
 AFLAGS_hdmi_pcm.o := -march=armv7-a -mtune=cortex-a9 -mfpu=neon -mfloat-abi=softfp
