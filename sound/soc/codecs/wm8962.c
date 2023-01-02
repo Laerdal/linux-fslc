@@ -76,6 +76,7 @@ struct wm8962_priv {
 	struct input_dev *beep;
 	struct work_struct beep_work;
 	int beep_rate;
+	bool is_master;
 
 #ifdef CONFIG_GPIOLIB
 	struct gpio_chip gpio_chip;
@@ -828,6 +829,7 @@ static bool wm8962_readable_register(struct device *dev, unsigned int reg)
 	case WM8962_ADDITIONAL_CONTROL_2:
 	case WM8962_PWR_MGMT_1:
 	case WM8962_PWR_MGMT_2:
+	case WM8962_PWR_MGMT_3:
 	case WM8962_ADDITIONAL_CONTROL_3:
 	case WM8962_ANTI_POP:
 	case WM8962_CLOCKING_3:
@@ -1663,6 +1665,11 @@ static const char *cap_lhpf_mode_text[] = {
 static SOC_ENUM_SINGLE_DECL(cap_lhpf_mode,
 			    WM8962_LHPF1, 1, cap_lhpf_mode_text);
 
+static const char *micbias_mode_text[] = {
+	"MICBIAS_LVL", "AVDDx1.63", "AVDDx1.34",  "AVDDx1.63"
+};
+
+static SOC_ENUM_SINGLE_DECL(micbias_mode, WM8962_PWR_MGMT_3, 0, micbias_mode_text);
 static const struct snd_kcontrol_new wm8962_snd_controls[] = {
 SOC_DOUBLE("Input Mixer Switch", WM8962_INPUT_MIXER_CONTROL_1, 3, 2, 1, 1),
 
@@ -1693,6 +1700,8 @@ SOC_ENUM("Capture HPF Mode", cap_hpf_mode),
 SOC_SINGLE("Capture HPF Cutoff", WM8962_ADC_DAC_CONTROL_2, 7, 7, 0),
 SOC_SINGLE("Capture LHPF Switch", WM8962_LHPF1, 0, 1, 0),
 SOC_ENUM("Capture LHPF Mode", cap_lhpf_mode),
+
+SOC_ENUM("Capture MICBIAS Volt", micbias_mode),
 
 SOC_DOUBLE_R_TLV("Sidetone Volume", WM8962_DAC_DSP_MIXING_1,
 		 WM8962_DAC_DSP_MIXING_2, 4, 12, 0, st_tlv),
@@ -1980,13 +1989,13 @@ static int hp_event(struct snd_soc_dapm_widget *w,
 				    WM8962_HP1L_ENA_DLY | WM8962_HP1R_ENA_DLY |
 				    WM8962_HP1L_ENA_OUTP |
 				    WM8962_HP1R_ENA_OUTP, 0);
-				    
+
 		break;
 
 	default:
 		WARN(1, "Invalid event %d\n", event);
 		return -EINVAL;
-	
+
 	}
 
 	return 0;
@@ -2219,9 +2228,6 @@ SND_SOC_DAPM_PGA_E("HPOUT", SND_SOC_NOPM, 0, 0, NULL, 0, hp_event,
 
 SND_SOC_DAPM_OUTPUT("HPOUTL"),
 SND_SOC_DAPM_OUTPUT("HPOUTR"),
-
-SND_SOC_DAPM_PGA("SPKOUTL Output", WM8962_CLASS_D_CONTROL_1, 6, 0, NULL, 0),
-SND_SOC_DAPM_PGA("SPKOUTR Output", WM8962_CLASS_D_CONTROL_1, 7, 0, NULL, 0),
 };
 
 static const struct snd_soc_dapm_widget wm8962_dapm_spk_mono_widgets[] = {
@@ -2229,6 +2235,7 @@ SND_SOC_DAPM_MIXER("Speaker Mixer", WM8962_MIXER_ENABLES, 1, 0,
 		   spkmixl, ARRAY_SIZE(spkmixl)),
 SND_SOC_DAPM_MUX_E("Speaker PGA", WM8962_PWR_MGMT_2, 4, 0, &spkoutl_mux,
 		   out_pga_event, SND_SOC_DAPM_POST_PMU),
+SND_SOC_DAPM_PGA("Speaker Output", WM8962_CLASS_D_CONTROL_1, 6, 0, NULL, 0),
 SND_SOC_DAPM_OUTPUT("SPKOUT"),
 };
 
@@ -2242,6 +2249,9 @@ SND_SOC_DAPM_MUX_E("SPKOUTL PGA", WM8962_PWR_MGMT_2, 4, 0, &spkoutl_mux,
 		   out_pga_event, SND_SOC_DAPM_POST_PMU),
 SND_SOC_DAPM_MUX_E("SPKOUTR PGA", WM8962_PWR_MGMT_2, 3, 0, &spkoutr_mux,
 		   out_pga_event, SND_SOC_DAPM_POST_PMU),
+
+SND_SOC_DAPM_PGA("SPKOUTR Output", WM8962_CLASS_D_CONTROL_1, 7, 0, NULL, 0),
+SND_SOC_DAPM_PGA("SPKOUTL Output", WM8962_CLASS_D_CONTROL_1, 6, 0, NULL, 0),
 
 SND_SOC_DAPM_OUTPUT("SPKOUTL"),
 SND_SOC_DAPM_OUTPUT("SPKOUTR"),
@@ -2352,18 +2362,12 @@ static const struct snd_soc_dapm_route wm8962_spk_mono_intercon[] = {
 	{ "Speaker PGA", "Mixer", "Speaker Mixer" },
 	{ "Speaker PGA", "DAC", "DACL" },
 
-	{ "SPKOUTL Output", NULL, "Speaker PGA" },
-	{ "SPKOUTL Output", NULL, "SYSCLK" },
-	{ "SPKOUTL Output", NULL, "TOCLK" },
-	{ "SPKOUTL Output", NULL, "TEMP_SPK" },
+	{ "Speaker Output", NULL, "Speaker PGA" },
+	{ "Speaker Output", NULL, "SYSCLK" },
+	{ "Speaker Output", NULL, "TOCLK" },
+	{ "Speaker Output", NULL, "TEMP_SPK" },
 
-	{ "SPKOUTR Output", NULL, "Speaker PGA" },
-	{ "SPKOUTR Output", NULL, "SYSCLK" },
-	{ "SPKOUTR Output", NULL, "TOCLK" },
-	{ "SPKOUTR Output", NULL, "TEMP_SPK" },
-
-	{ "SPKOUT", NULL, "SPKOUTL Output" },
-	{ "SPKOUT", NULL, "SPKOUTR Output" },
+	{ "SPKOUT", NULL, "Speaker Output" },
 };
 
 static const struct snd_soc_dapm_route wm8962_spk_stereo_intercon[] = {
@@ -2486,7 +2490,7 @@ static void wm8962_configure_bclk(struct snd_soc_component *component)
 
 	snd_soc_component_update_bits(component, WM8962_CLOCKING_4,
 			    WM8962_SYSCLK_RATE_MASK, clocking4);
-
+#if 0
 	/* DSPCLK_DIV can be only generated correctly after enabling SYSCLK.
 	 * So we here provisionally enable it and then disable it afterward
 	 * if current bias_level hasn't reached SND_SOC_BIAS_ON.
@@ -2508,7 +2512,9 @@ static void wm8962_configure_bclk(struct snd_soc_component *component)
 	if (snd_soc_component_get_bias_level(component) != SND_SOC_BIAS_ON)
 		snd_soc_component_update_bits(component, WM8962_CLOCKING2,
 				WM8962_SYSCLK_ENA_MASK, 0);
-
+#else
+	dspclk = snd_soc_component_read(component, WM8962_CLOCKING1);
+#endif
 	if (dspclk < 0) {
 		dev_err(component->dev, "Failed to read DSPCLK: %d\n", dspclk);
 		return;
@@ -2565,31 +2571,53 @@ static void wm8962_configure_bclk(struct snd_soc_component *component)
 static int wm8962_set_bias_level(struct snd_soc_component *component,
 				 enum snd_soc_bias_level level)
 {
-	switch (level) {
-	case SND_SOC_BIAS_ON:
-		break;
+	int current_level = snd_soc_component_get_bias_level(component);
+	dev_dbg(component->dev, "%s: %d -> %d\n", __func__, current_level,
+		level);
 
-	case SND_SOC_BIAS_PREPARE:
-		/* VMID 2*50k */
-		snd_soc_component_update_bits(component, WM8962_PWR_MGMT_1,
-				    WM8962_VMID_SEL_MASK, 0x80);
-
-		wm8962_configure_bclk(component);
+	switch (current_level) {
+	case SND_SOC_BIAS_OFF:
+		if (level == SND_SOC_BIAS_STANDBY) {
+			/* VMID 2*250k */
+			snd_soc_component_update_bits(component,
+						      WM8962_PWR_MGMT_1,
+						      WM8962_VMID_SEL_MASK,
+						      0x80);
+			msleep(100);
+		}
 		break;
 
 	case SND_SOC_BIAS_STANDBY:
-		/* VMID 2*250k */
-		snd_soc_component_update_bits(component, WM8962_PWR_MGMT_1,
-				    WM8962_VMID_SEL_MASK, 0x100);
-
-		if (snd_soc_component_get_bias_level(component) == SND_SOC_BIAS_OFF)
-			msleep(100);
+		switch (level) {
+		case SND_SOC_BIAS_OFF:
+			snd_soc_component_update_bits(component,
+						      WM8962_PWR_MGMT_1,
+						      WM8962_VMID_SEL_MASK,
+						      0x00);
+			break;
+		case SND_SOC_BIAS_PREPARE:
+			/* VMID 2*5k */
+			snd_soc_component_update_bits(component,
+						      WM8962_PWR_MGMT_1,
+						      WM8962_VMID_SEL_MASK,
+						      0x180);
+			break;
+		default:
+			break;
+		}
 		break;
 
-	case SND_SOC_BIAS_OFF:
+	case SND_SOC_BIAS_PREPARE:
+		if (level == SND_SOC_BIAS_STANDBY)
+			snd_soc_component_update_bits(component,
+						      WM8962_PWR_MGMT_1,
+						      WM8962_VMID_SEL_MASK,
+						      0x80);
+		break;
+
+	default:
 		break;
 	}
-
 	return 0;
 }
 
@@ -2665,7 +2693,7 @@ static int wm8962_hw_params(struct snd_pcm_substream *substream,
 	dev_dbg(component->dev, "hw_params set BCLK %dHz LRCLK %dHz\n",
 		wm8962->bclk, wm8962->lrclk);
 
-	if (snd_soc_component_get_bias_level(component) == SND_SOC_BIAS_ON)
+	if (snd_soc_component_get_bias_level(component) == SND_SOC_BIAS_ON && wm8962->is_master)
 		wm8962_configure_bclk(component);
 
 	return 0;
@@ -2702,6 +2730,7 @@ static int wm8962_set_dai_sysclk(struct snd_soc_dai *dai, int clk_id,
 static int wm8962_set_dai_fmt(struct snd_soc_dai *dai, unsigned int fmt)
 {
 	struct snd_soc_component *component = dai->component;
+	struct wm8962_priv *wm8962 = snd_soc_component_get_drvdata(component);
 	int aif0 = 0;
 
 	switch (fmt & SND_SOC_DAIFMT_FORMAT_MASK) {
@@ -2750,9 +2779,11 @@ static int wm8962_set_dai_fmt(struct snd_soc_dai *dai, unsigned int fmt)
 
 	switch (fmt & SND_SOC_DAIFMT_MASTER_MASK) {
 	case SND_SOC_DAIFMT_CBM_CFM:
+		wm8962->is_master = true;
 		aif0 |= WM8962_MSTR;
 		break;
 	case SND_SOC_DAIFMT_CBS_CFS:
+		wm8962->is_master = false;
 		break;
 	default:
 		return -EINVAL;
@@ -2906,12 +2937,8 @@ static int wm8962_set_fll(struct snd_soc_component *component, int fll_id, int s
 	switch (fll_id) {
 	case WM8962_FLL_MCLK:
 	case WM8962_FLL_BCLK:
-		fll1 |= (fll_id - 1) << WM8962_FLL_REFCLK_SRC_SHIFT;
-		break;
 	case WM8962_FLL_OSC:
 		fll1 |= (fll_id - 1) << WM8962_FLL_REFCLK_SRC_SHIFT;
-		snd_soc_component_update_bits(component, WM8962_PLL2,
-					      WM8962_OSC_ENA, WM8962_OSC_ENA);
 		break;
 	case WM8962_FLL_INT:
 		snd_soc_component_update_bits(component, WM8962_FLL_CONTROL_1,
@@ -2920,7 +2947,7 @@ static int wm8962_set_fll(struct snd_soc_component *component, int fll_id, int s
 				    WM8962_FLL_FRC_NCO, WM8962_FLL_FRC_NCO);
 		break;
 	default:
-		dev_err(component->dev, "Unknown FLL source %d\n", source);
+		dev_err(component->dev, "Unknown FLL source %d\n", ret);
 		return -EINVAL;
 	}
 
@@ -3144,7 +3171,7 @@ static irqreturn_t wm8962_irq(int irq, void *data)
 	}
 
 	if (active & (WM8962_MICSCD_EINT | WM8962_MICD_EINT)) {
-		dev_dbg(dev, "Microphone event detected\n");
+		dev_dbg(dev, "Microphone event (0x%x) detected\n", active);
 
 #ifndef CONFIG_SND_SOC_WM8962_MODULE
 		trace_snd_soc_jack_irq(dev_name(dev));
@@ -3179,20 +3206,27 @@ int wm8962_mic_detect(struct snd_soc_component *component, struct snd_soc_jack *
 {
 	struct wm8962_priv *wm8962 = snd_soc_component_get_drvdata(component);
 	struct snd_soc_dapm_context *dapm = snd_soc_component_get_dapm(component);
-	int irq_mask, enable;
+	int irq_mask, enable, ret;
 
 	wm8962->jack = jack;
+	ret = pm_runtime_get_sync(component->dev);
+	if (ret < 0) {
+		pm_runtime_put_noidle(component->dev);
+		dev_err(component->dev, "%s: Failed to resume: %d\n", __func__, ret);
+		return ret;
+	}
 	if (jack) {
 		irq_mask = 0;
 		enable = WM8962_MICDET_ENA;
 	} else {
 		irq_mask = WM8962_MICD_EINT | WM8962_MICSCD_EINT;
 		enable = 0;
+		cancel_delayed_work(&wm8962->mic_work);
 	}
 
-	snd_soc_component_update_bits(component, WM8962_INTERRUPT_STATUS_2_MASK,
+	regmap_update_bits(wm8962->regmap, WM8962_INTERRUPT_STATUS_2_MASK,
 			    WM8962_MICD_EINT | WM8962_MICSCD_EINT, irq_mask);
-	snd_soc_component_update_bits(component, WM8962_ADDITIONAL_CONTROL_4,
+	regmap_update_bits(wm8962->regmap, WM8962_ADDITIONAL_CONTROL_4,
 			    WM8962_MICDET_ENA, enable);
 
 	/* Send an initial empty report */
@@ -3210,6 +3244,7 @@ int wm8962_mic_detect(struct snd_soc_component *component, struct snd_soc_jack *
 	}
 
 	snd_soc_dapm_mutex_unlock(dapm);
+	pm_runtime_put_noidle(component->dev);
 
 	return 0;
 }
@@ -3600,8 +3635,6 @@ static int wm8962_set_pdata_from_of(struct i2c_client *i2c,
 				pdata->gpio_init[i] = 0x0;
 		}
 
-	pdata->mclk = devm_clk_get(&i2c->dev, NULL);
-
 	return 0;
 }
 
@@ -3612,11 +3645,32 @@ static int wm8962_i2c_probe(struct i2c_client *i2c,
 	struct wm8962_priv *wm8962;
 	unsigned int reg;
 	int ret, i, irq_pol, trigger;
+	struct clk *mclk;
 
 	wm8962 = devm_kzalloc(&i2c->dev, sizeof(*wm8962), GFP_KERNEL);
 	if (wm8962 == NULL)
 		return -ENOMEM;
 
+	mclk = devm_clk_get(&i2c->dev, NULL);
+	if (IS_ERR(mclk)) {
+		/* But do not ignore the request for probe defer */
+		if (PTR_ERR(mclk) == -EPROBE_DEFER) {
+			dev_info(&i2c->dev, "Defer on mclk get\n");
+			return -EPROBE_DEFER;
+		}
+	} else {
+		wm8962->pdata.mclk = mclk;
+		clk_prepare_enable(wm8962->pdata.mclk);
+	}
+	/* If platform data was supplied, update the default data in priv */
+	if (pdata) {
+		memcpy(&wm8962->pdata, pdata, sizeof(struct wm8962_pdata));
+		wm8962->pdata.mclk = mclk;
+	} else if (i2c->dev.of_node) {
+		ret = wm8962_set_pdata_from_of(i2c, &wm8962->pdata);
+		if (ret != 0)
+			return ret;
+	}
 	mutex_init(&wm8962->dsp2_ena_lock);
 
 	i2c_set_clientdata(i2c, wm8962);
@@ -3624,23 +3678,6 @@ static int wm8962_i2c_probe(struct i2c_client *i2c,
 	INIT_DELAYED_WORK(&wm8962->mic_work, wm8962_mic_work);
 	init_completion(&wm8962->fll_lock);
 	wm8962->irq = i2c->irq;
-
-	/* If platform data was supplied, update the default data in priv */
-	if (pdata) {
-		memcpy(&wm8962->pdata, pdata, sizeof(struct wm8962_pdata));
-	} else if (i2c->dev.of_node) {
-		ret = wm8962_set_pdata_from_of(i2c, &wm8962->pdata);
-		if (ret != 0)
-			return ret;
-	}
-
-	/* Mark the mclk pointer to NULL if no mclk assigned */
-	if (IS_ERR(wm8962->pdata.mclk)) {
-		/* But do not ignore the request for probe defer */
-		if (PTR_ERR(wm8962->pdata.mclk) == -EPROBE_DEFER)
-			return -EPROBE_DEFER;
-		wm8962->pdata.mclk = NULL;
-	}
 
 	for (i = 0; i < ARRAY_SIZE(wm8962->supplies); i++)
 		wm8962->supplies[i].supply = wm8962_supply_names[i];
@@ -3834,12 +3871,15 @@ static int wm8962_i2c_probe(struct i2c_client *i2c,
 
 	/* The drivers should power up as needed */
 	regulator_bulk_disable(ARRAY_SIZE(wm8962->supplies), wm8962->supplies);
-
+	if (wm8962->pdata.mclk)
+		clk_disable_unprepare(wm8962->pdata.mclk);
 	return 0;
 
 err_pm_runtime:
 	pm_runtime_disable(&i2c->dev);
 err_enable:
+	if (wm8962->pdata.mclk)
+		clk_disable_unprepare(wm8962->pdata.mclk);
 	regulator_bulk_disable(ARRAY_SIZE(wm8962->supplies), wm8962->supplies);
 err:
 	return ret;
@@ -3876,11 +3916,8 @@ static int wm8962_runtime_resume(struct device *dev)
 
 	regcache_mark_dirty(wm8962->regmap);
 
-	/* SYSCLK defaults to on; make sure it is off so we can safely
-	 * write to registers if the device is declocked.
-	 */
 	regmap_write_bits(wm8962->regmap, WM8962_CLOCKING2,
-			  WM8962_SYSCLK_ENA, 0);
+			  WM8962_SYSCLK_ENA, WM8962_SYSCLK_ENA);
 
 	/* Ensure we have soft control over all registers */
 	regmap_update_bits(wm8962->regmap, WM8962_CLOCKING2,
@@ -3921,6 +3958,10 @@ static int wm8962_runtime_suspend(struct device *dev)
 	regmap_update_bits(wm8962->regmap, WM8962_ANTI_POP,
 			   WM8962_STARTUP_BIAS_ENA |
 			   WM8962_VMID_BUF_ENA, 0);
+
+
+	regmap_update_bits(wm8962->regmap, WM8962_CLOCKING2,
+			  WM8962_SYSCLK_ENA, 0);
 
 	regcache_cache_only(wm8962->regmap, true);
 

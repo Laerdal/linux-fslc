@@ -53,6 +53,7 @@
 #define WM8962_PWR_MGMT_2                       0x1A
 #define WM8962_ADDITIONAL_CONTROL_3             0x1B
 #define WM8962_ANTI_POP                         0x1C
+#define WM8962_PWR_MGMT_3						0x1D
 #define WM8962_CLOCKING_3                       0x1E
 #define WM8962_INPUT_MIXER_CONTROL_1            0x1F
 #define WM8962_LEFT_INPUT_MIXER_VOLUME          0x20
