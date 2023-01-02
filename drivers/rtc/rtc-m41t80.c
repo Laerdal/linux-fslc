@@ -44,6 +44,7 @@
 #define M41T80_REG_ALARM_MIN	0x0d
 #define M41T80_REG_ALARM_SEC	0x0e
 #define M41T80_REG_FLAGS	0x0f
+#define M41T80_REG_ACAL		0x12
 #define M41T80_REG_SQW		0x13
 
 #define M41T80_DATETIME_REG_SIZE	(M41T80_REG_YEAR + 1)
@@ -147,6 +148,7 @@ struct m41t80_data {
 	unsigned long features;
 	struct i2c_client *client;
 	struct rtc_device *rtc;
+	u8 acal;
 #ifdef CONFIG_COMMON_CLK
 	struct clk_hw sqw;
 	unsigned long freq;
@@ -965,7 +967,15 @@ static int m41t80_probe(struct i2c_client *client,
 		dev_err(&client->dev, "Can't clear ST bit\n");
 		return rc;
 	}
-
+#ifdef CONFIG_OF
+	if ( client->dev.of_node ) {
+		rc = of_property_read_u8(client->dev.of_node, "xtal-cap", &m41t80_data->acal);
+		if (rc == 0) {
+			rc = i2c_smbus_write_byte_data(client, M41T80_REG_ACAL, m41t80_data->acal);
+			dev_info(&client->dev, "Setting ACAL to DT value %x\n", m41t80_data->acal);
+		}
+	}
+#endif
 #ifdef CONFIG_RTC_DRV_M41T80_WDT
 	if (m41t80_data->features & M41T80_FEATURE_HT) {
 		save_client = client;
