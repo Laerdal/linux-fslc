@@ -1026,4 +1026,16 @@ config FUEL_GAUGE_MM8013
 	  the state of charge, temperature, cycle count, actual and design
 	  capacity, etc.
 
+config LINKBOX_PLUS_PSY
+    tristate "Linkbox Plus Power Supply"
+    depends on I2C && GPIOLIB
+    help
+        Say Y to enable Linkbox Plus PSY
+
+config SIMPAD_PLUS_PSY
+    tristate "Simpad Plus Power Supply"
+    depends on GPIOLIB
+    help
+        Say Y to enable Simpad Plus PSY
+
 endif # POWER_SUPPLY
