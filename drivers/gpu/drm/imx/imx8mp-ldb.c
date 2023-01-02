@@ -193,7 +193,7 @@ imx8mp_ldb_encoder_atomic_check(struct drm_encoder *encoder,
 	default:
 		return -EINVAL;
 	}
-
+#if 0	/* Remove this crazy stuff locking in the pixel rate, no errata exists on this */
 	/*
 	 * Due to limited video PLL frequency points on i.MX8mp,
 	 * we do mode fixup here in case any mode is unsupported.
@@ -202,7 +202,7 @@ imx8mp_ldb_encoder_atomic_check(struct drm_encoder *encoder,
 		mode->clock = mode->clock > 100000 ? 148500 : 74250;
 	else
 		mode->clock = 74250;
-
+#endif
 	return 0;
 }
 
