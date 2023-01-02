@@ -8,6 +8,8 @@
 
 #include <linux/dma/imx-dma.h>
 #include <sound/dmaengine_pcm.h>
+#include <linux/clk.h>
+#include <linux/clk-provider.h>
 
 #define FAL_SAI_NUM_RATES  20
 #define FSL_SAI_FORMATS (SNDRV_PCM_FMTBIT_S16_LE |\
@@ -275,6 +277,11 @@ struct fsl_sai_dl_cfg {
 	unsigned int next_off[2];
 };
 
+struct fsl_sai_mclk {
+	struct clk_hw hw;
+	spinlock_t lock;
+};
+
 struct fsl_sai {
 	struct platform_device *pdev;
 	struct regmap *regmap;
@@ -284,6 +291,7 @@ struct fsl_sai {
 	struct clk *pll8k_clk;
 	struct clk *pll11k_clk;
 	struct resource *res;
+	struct fsl_sai_mclk sai_mclk_out;
 
 	bool is_consumer_mode[2];
 	bool is_lsb_first;
@@ -304,6 +312,8 @@ struct fsl_sai {
 	unsigned int slots;
 	unsigned int slot_width;
 	unsigned int bclk_ratio;
+	int mclk_id_set;
+	bool is_mclk_provider;
 
 	const struct fsl_sai_soc_data *soc_data;
 	struct snd_soc_dai_driver cpu_dai_drv[3];
