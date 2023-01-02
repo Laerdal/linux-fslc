@@ -470,6 +470,19 @@ config HISI_HIKEY_USB
 	  switching between the dual-role USB-C port and the USB-A host ports
 	  using only one USB controller.
 
+config MODULATED_PWM
+	tristate "Modulated PWM"
+	default n
+	help
+		Modulated PWM with 8 bit resolution
+
+config OF_FUNCTION_PINMUX
+	tristate "Function Pinmux"
+	default n
+	depends on OF && PINMUX && PINCTRL
+	help
+		Function multiplexer for pads
+
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"
