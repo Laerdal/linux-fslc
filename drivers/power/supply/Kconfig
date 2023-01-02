@@ -960,4 +960,16 @@ config CHARGER_QCOM_SMB2
 	  adds support for the SMB2 switch mode battery charger found
 	  in PMI8998 and related PMICs.
 
+config LINKBOX_PLUS_PSY
+    tristate "Linkbox Plus Power Supply"
+    depends on I2C && GPIOLIB
+    help
+        Say Y to enable Linkbox Plus PSY
+
+config SIMPAD_PLUS_PSY
+    tristate "Simpad Plus Power Supply"
+    depends on GPIOLIB
+    help
+        Say Y to enable Simpad Plus PSY
+
 endif # POWER_SUPPLY
