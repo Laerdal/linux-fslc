@@ -67,3 +67,5 @@ obj-$(CONFIG_TMR_MANAGER)      += xilinx_tmr_manager.o
 obj-$(CONFIG_TMR_INJECT)	+= xilinx_tmr_inject.o
 obj-$(CONFIG_TPS6594_ESM)	+= tps6594-esm.o
 obj-$(CONFIG_TPS6594_PFSM)	+= tps6594-pfsm.o
+obj-$(CONFIG_MODULATED_PWM) += modulated_pwm.o
+obj-$(CONFIG_OF_FUNCTION_PINMUX) += dt-function-mux.o

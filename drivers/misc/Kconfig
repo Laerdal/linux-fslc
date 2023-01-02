@@ -562,6 +562,19 @@ config TPS6594_PFSM
 	  This driver can also be built as a module.  If so, the module
 	  will be called tps6594-pfsm.
 
+config MODULATED_PWM
+	tristate "Modulated PWM"
+	default n
+	help
+		Modulated PWM with 8 bit resolution
+
+config OF_FUNCTION_PINMUX
+	tristate "Function Pinmux"
+	default n
+	depends on OF && PINMUX && PINCTRL
+	help
+		Function multiplexer for pads
+
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"
