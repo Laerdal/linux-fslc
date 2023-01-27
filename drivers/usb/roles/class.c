@@ -286,11 +286,13 @@ static const struct attribute_group *usb_role_switch_groups[] = {
 
 static int usb_role_switch_uevent(const struct device *dev, struct kobj_uevent_env *env)
 {
-	int ret;
-
+	int ret, ret2;
+	struct usb_role_switch *sw = to_role_switch(dev);
 	ret = add_uevent_var(env, "USB_ROLE_SWITCH=%s", dev_name(dev));
-	if (ret)
+	ret2 = add_uevent_var(env, "ROLE=%s", usb_role_string(sw->role));
+	if (ret || ret2)
 		dev_err(dev, "failed to add uevent USB_ROLE_SWITCH\n");
+
 
 	return ret;
 }
