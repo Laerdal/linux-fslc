@@ -1,0 +1,52 @@
+// SPDX-License-Identifier: (GPL-2.0 OR MIT)
+/*
+ * Copyright 2017 NXP
+ * Copyright (C) 2017-2018 Pengutronix, Lucas Stach <kernel@pengutronix.de>
+ */
+
+/dts-v1/;
+
+#include "imx8mq-evk.dts"
+
+/ {
+	model = "DR i.MX8MQ EVK";
+};
+
+&modem_reset {
+	reset-gpios = <&gpio3 5 GPIO_ACTIVE_HIGH>;
+};
+
+&flash0 {
+	partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		partition@0 {
+			label = "barebox-environment-qspi";
+			reg = <0x0 0x200000>;
+		};
+		partition@200000 {
+			label = "barebox-state";
+			reg = <0x200000 0x200000>;
+		};
+
+		partition@400000 {
+			label = "system_a";
+			reg = <0x400000 0x40000>;
+		};
+		partition@440000 {
+			label = "system_b";
+			reg = <0x440000 0x40000>;
+		};
+
+		partition@480000 {
+			label = "user_a";
+			reg = <0x480000 0x40000>;
+		};
+		partition@4c0000 {
+			label = "user_b";
+			reg = <0x4c0000 0x40000>;
+		};
+	};
+};
