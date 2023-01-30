@@ -1,0 +1,27 @@
+/*
+ * Copyright DATA RESPONS AS
+ *
+ * The code contained herein is licensed under the GNU General Public
+ * License. You may obtain a copy of the GNU General Public License
+ * Version 2 or later at the following locations:
+ *
+ * http://www.opensource.org/licenses/gpl-license.html
+ * http://www.gnu.org/copyleft/gpl.html
+ */
+
+/dts-v1/;
+#include "imx6dl.dtsi"
+#include "laerdal-cpu-module-revC.dtsi"
+
+/ {
+	model = "Laerdal Medical CPU Module (rev C - Duallite)";
+	compatible = "datarespons,cpumod2", "fsl,imx6dl";
+};
+
+&epdc {
+	status = "disabled";
+};
+
+&i2c4 {
+	status = "disabled";
+};
