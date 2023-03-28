@@ -20,6 +20,7 @@
 #include <linux/regmap.h>
 #include <linux/slab.h>
 #include <linux/stmmac.h>
+#include <linux/regulator/consumer.h>
 
 #include "stmmac_platform.h"
 
@@ -57,7 +58,28 @@ struct imx_priv_data {
 
 	const struct imx_dwmac_ops *ops;
 	struct plat_stmmacenet_data *plat_dat;
+	struct regulator *phy_reg;
 };
+
+static int imx_dwmac_phy_power_on(struct imx_priv_data *bsp_priv, bool enable)
+{
+	int ret = 0;
+
+	if (!bsp_priv->phy_reg)
+		return 0;
+
+	dev_dbg(bsp_priv->dev, "Phy %s\n", enable ? "on" : "off");
+	if (enable) {
+		ret = regulator_enable(bsp_priv->phy_reg);
+		if (ret)
+			dev_err(bsp_priv->dev, "fail to enable phy-supply\n");
+	} else {
+		ret = regulator_disable(bsp_priv->phy_reg);
+		if (ret)
+			dev_err(bsp_priv->dev, "fail to disable phy-supply\n");
+	}
+	return ret;
+}
 
 static int imx8mp_set_intf_mode(struct plat_stmmacenet_data *plat_dat)
 {
@@ -192,7 +214,7 @@ static int imx_dwmac_init(struct platform_device *pdev, void *priv)
 	int ret;
 
 	plat_dat = dwmac->plat_dat;
-
+	imx_dwmac_phy_power_on(priv, true);
 	if (dwmac->ops->set_intf_mode) {
 		ret = dwmac->ops->set_intf_mode(plat_dat);
 		if (ret)
@@ -204,7 +226,7 @@ static int imx_dwmac_init(struct platform_device *pdev, void *priv)
 
 static void imx_dwmac_exit(struct platform_device *pdev, void *priv)
 {
-	/* nothing to do now */
+	imx_dwmac_phy_power_on(priv, false);
 }
 
 static void imx_dwmac_fix_speed(void *priv, unsigned int speed)
@@ -284,6 +306,15 @@ imx_dwmac_parse_dt(struct imx_priv_data *dwmac, struct device *dev)
 		}
 	}
 
+	dwmac->phy_reg = devm_regulator_get_optional(dev, "phy");
+	if (IS_ERR(dwmac->phy_reg)) {
+		if (PTR_ERR(dwmac->phy_reg) == -EPROBE_DEFER) {
+			dev_err(dev, "phy regulator is not available yet, deferred probing\n");
+			return -EPROBE_DEFER;
+		}
+		dev_err(dev, "no regulator found\n");
+		dwmac->phy_reg = NULL;
+	}
 	return err;
 }
 
@@ -356,6 +387,13 @@ err_match_data:
 	return ret;
 }
 
+static int imx_dwmac_remove(struct platform_device *pdev)
+{
+	struct imx_priv_data *bsp_priv = get_stmmac_bsp_priv(&pdev->dev);
+	int ret = stmmac_dvr_remove(&pdev->dev);
+	imx_dwmac_phy_power_on(bsp_priv, false);
+	return ret;
+}
 static struct imx_dwmac_ops imx8mp_dwmac_data = {
 	.addr_width = 34,
 	.mac_rgmii_txclk_auto_adj = false,
@@ -384,7 +422,7 @@ MODULE_DEVICE_TABLE(of, imx_dwmac_match);
 
 static struct platform_driver imx_dwmac_driver = {
 	.probe  = imx_dwmac_probe,
-	.remove = stmmac_pltfr_remove,
+	.remove = imx_dwmac_remove,
 	.driver = {
 		.name           = "imx-dwmac",
 		.pm		= &stmmac_pltfr_pm_ops,
