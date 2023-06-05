@@ -152,6 +152,9 @@ struct sgtl5000_priv {
 	u8 lrclk_strength;
 	u8 sclk_strength;
 	u16 mute_state[LAST_POWER_EVENT + 1];
+	bool micbias_always_on;
+	bool capless;
+	struct device *dev;
 };
 
 static inline int hp_sel_input(struct snd_soc_component *component)
@@ -163,9 +166,13 @@ static inline int hp_sel_input(struct snd_soc_component *component)
 static inline u16 mute_output(struct snd_soc_component *component,
 			      u16 mute_mask)
 {
+	struct sgtl5000_priv *sgtl5000 =
+		snd_soc_component_get_drvdata(component);
+	
 	u16 mute_reg = snd_soc_component_read(component,
 					      SGTL5000_CHIP_ANA_CTRL);
-
+	dev_dbg(sgtl5000->dev, "%s: mute_mask 0x%x\n", __func__,
+		(unsigned)mute_mask);
 	snd_soc_component_update_bits(component, SGTL5000_CHIP_ANA_CTRL,
 			    mute_mask, mute_mask);
 	return mute_reg;
@@ -174,16 +181,27 @@ static inline u16 mute_output(struct snd_soc_component *component,
 static inline void restore_output(struct snd_soc_component *component,
 				  u16 mute_mask, u16 mute_reg)
 {
+	struct sgtl5000_priv *sgtl5000 =
+		snd_soc_component_get_drvdata(component);
+
+	dev_dbg(sgtl5000->dev, "%s: mute_mask 0x%x, mute_reg 0x%x\n", __func__,
+		(unsigned)mute_mask, (unsigned)mute_reg);
 	snd_soc_component_update_bits(component, SGTL5000_CHIP_ANA_CTRL,
-		mute_mask, mute_reg);
+				      mute_mask, mute_reg);
 }
 
 static void vag_power_on(struct snd_soc_component *component, u32 source)
 {
+	struct sgtl5000_priv *sgtl5000 = snd_soc_component_get_drvdata(component);
 	if (snd_soc_component_read(component, SGTL5000_CHIP_ANA_POWER) &
 	    SGTL5000_VAG_POWERUP)
 		return;
 
+	if (sgtl5000->capless) {
+		snd_soc_component_update_bits(component, SGTL5000_CHIP_ANA_POWER,
+			    SGTL5000_CAPLESS_HP_POWERUP, SGTL5000_CAPLESS_HP_POWERUP);
+		msleep(1);
+	}
 	snd_soc_component_update_bits(component, SGTL5000_CHIP_ANA_POWER,
 			    SGTL5000_VAG_POWERUP, SGTL5000_VAG_POWERUP);
 
@@ -225,6 +243,7 @@ static int vag_power_consumers(struct snd_soc_component *component,
 
 static void vag_power_off(struct snd_soc_component *component, u32 source)
 {
+	struct sgtl5000_priv *sgtl5000 = snd_soc_component_get_drvdata(component);
 	u16 ana_pwr = snd_soc_component_read(component,
 					     SGTL5000_CHIP_ANA_POWER);
 
@@ -252,6 +271,10 @@ static void vag_power_off(struct snd_soc_component *component, u32 source)
 	 * As longer we wait, as smaller pop we've got.
 	 */
 	msleep(SGTL5000_VAG_POWERDOWN_DELAY);
+	if (sgtl5000->capless)
+		snd_soc_component_update_bits(component, SGTL5000_CHIP_ANA_POWER,
+			    SGTL5000_CAPLESS_HP_POWERUP, 0);
+
 }
 
 /*
@@ -278,8 +301,10 @@ static int mic_bias_event(struct snd_soc_dapm_widget *w,
 		break;
 
 	case SND_SOC_DAPM_PRE_PMD:
-		snd_soc_component_update_bits(component, SGTL5000_CHIP_MIC_CTRL,
-				SGTL5000_BIAS_R_MASK, 0);
+		if (!sgtl5000->micbias_always_on)
+			snd_soc_component_update_bits(component,
+						      SGTL5000_CHIP_MIC_CTRL,
+						      SGTL5000_BIAS_R_MASK, 0);
 		break;
 	}
 	return 0;
@@ -307,6 +332,7 @@ static int vag_and_mute_control(struct snd_soc_component *component,
 	struct sgtl5000_priv *sgtl5000 =
 		snd_soc_component_get_drvdata(component);
 
+	dev_dbg(sgtl5000->dev, "%s: event %d, src %d\n", __func__, event, event_source);
 	switch (event) {
 	case SND_SOC_DAPM_PRE_PMU:
 		sgtl5000->mute_state[event_source] =
@@ -436,9 +462,7 @@ static const struct snd_soc_dapm_widget sgtl5000_dapm_widgets[] = {
 	SND_SOC_DAPM_OUTPUT("HP_OUT"),
 	SND_SOC_DAPM_OUTPUT("LINE_OUT"),
 
-	SND_SOC_DAPM_SUPPLY("Mic Bias", SGTL5000_CHIP_MIC_CTRL, 8, 0,
-			    mic_bias_event,
-			    SND_SOC_DAPM_POST_PMU | SND_SOC_DAPM_PRE_PMD),
+	SND_SOC_DAPM_MIC("Mic Bias", mic_bias_event),
 
 	SND_SOC_DAPM_PGA_E("HP", SGTL5000_CHIP_ANA_POWER, 4, 0, NULL, 0,
 			   headphone_pga_event,
@@ -703,75 +727,74 @@ static const DECLARE_TLV_DB_SCALE(avc_max_gain, 0, 600, 0);
 /* tlv for dap avc threshold, */
 static const DECLARE_TLV_DB_MINMAX(avc_threshold, 0, 9600);
 
+/* tlv for DAC */
+static const DECLARE_TLV_DB_SCALE(dac_volume, -9000, 50, 0);
+
 static const struct snd_kcontrol_new sgtl5000_snd_controls[] = {
 	/* SOC_DOUBLE_S8_TLV with invert */
 	{
 		.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
 		.name = "PCM Playback Volume",
-		.access = SNDRV_CTL_ELEM_ACCESS_TLV_READ |
-			SNDRV_CTL_ELEM_ACCESS_READWRITE,
+		.access = SNDRV_CTL_ELEM_ACCESS_READWRITE |
+			  SNDRV_CTL_ELEM_ACCESS_TLV_READ,
 		.info = dac_info_volsw,
 		.get = dac_get_volsw,
 		.put = dac_put_volsw,
+		.tlv.p = dac_volume,
 	},
 
 	SOC_DOUBLE("Capture Volume", SGTL5000_CHIP_ANA_ADC_CTRL, 0, 4, 0xf, 0),
 	SOC_SINGLE_TLV("Capture Attenuate Switch (-6dB)",
-			SGTL5000_CHIP_ANA_ADC_CTRL,
-			8, 1, 0, capture_6db_attenuate),
+		       SGTL5000_CHIP_ANA_ADC_CTRL, 8, 1, 0,
+		       capture_6db_attenuate),
 	SOC_SINGLE("Capture ZC Switch", SGTL5000_CHIP_ANA_CTRL, 1, 1, 0),
 	SOC_SINGLE("Capture Switch", SGTL5000_CHIP_ANA_CTRL, 0, 1, 1),
 
-	SOC_DOUBLE_TLV("Headphone Playback Volume",
-			SGTL5000_CHIP_ANA_HP_CTRL,
-			0, 8,
-			0x7f, 1,
-			headphone_volume),
-	SOC_SINGLE("Headphone Playback Switch", SGTL5000_CHIP_ANA_CTRL,
-			4, 1, 1),
-	SOC_SINGLE("Headphone Playback ZC Switch", SGTL5000_CHIP_ANA_CTRL,
-			5, 1, 0),
+	SOC_DOUBLE_TLV("Headphone Playback Volume", SGTL5000_CHIP_ANA_HP_CTRL,
+		       0, 8, 0x7f, 1, headphone_volume),
+	SOC_SINGLE("Headphone Playback Switch", SGTL5000_CHIP_ANA_CTRL, 4, 1,
+		   1),
+	SOC_SINGLE("Headphone Playback ZC Switch", SGTL5000_CHIP_ANA_CTRL, 5, 1,
+		   0),
 
-	SOC_SINGLE_TLV("Mic Volume", SGTL5000_CHIP_MIC_CTRL,
-			0, 3, 0, mic_gain_tlv),
+	SOC_SINGLE_TLV("Mic Volume", SGTL5000_CHIP_MIC_CTRL, 0, 3, 0,
+		       mic_gain_tlv),
 
-	SOC_DOUBLE_TLV("Lineout Playback Volume",
-			SGTL5000_CHIP_LINE_OUT_VOL,
-			SGTL5000_LINE_OUT_VOL_LEFT_SHIFT,
-			SGTL5000_LINE_OUT_VOL_RIGHT_SHIFT,
-			0x1f, 1,
-			lineout_volume),
+	SOC_DOUBLE_TLV("Lineout Playback Volume", SGTL5000_CHIP_LINE_OUT_VOL,
+		       SGTL5000_LINE_OUT_VOL_LEFT_SHIFT,
+		       SGTL5000_LINE_OUT_VOL_RIGHT_SHIFT, 0x1f, 1,
+		       lineout_volume),
 	SOC_SINGLE("Lineout Playback Switch", SGTL5000_CHIP_ANA_CTRL, 8, 1, 1),
 
-	SOC_SINGLE_TLV("DAP Main channel", SGTL5000_DAP_MAIN_CHAN,
-	0, 0xffff, 0, dap_volume),
+	SOC_SINGLE_TLV("DAP Main channel", SGTL5000_DAP_MAIN_CHAN, 0, 0xffff, 0,
+		       dap_volume),
 
-	SOC_SINGLE_TLV("DAP Mix channel", SGTL5000_DAP_MIX_CHAN,
-	0, 0xffff, 0, dap_volume),
+	SOC_SINGLE_TLV("DAP Mix channel", SGTL5000_DAP_MIX_CHAN, 0, 0xffff, 0,
+		       dap_volume),
 	/* Automatic Volume Control (DAP AVC) */
 	SOC_SINGLE("AVC Switch", SGTL5000_DAP_AVC_CTRL, 0, 1, 0),
 	SOC_SINGLE("AVC Hard Limiter Switch", SGTL5000_DAP_AVC_CTRL, 5, 1, 0),
 	SOC_SINGLE_TLV("AVC Max Gain Volume", SGTL5000_DAP_AVC_CTRL, 12, 2, 0,
-			avc_max_gain),
+		       avc_max_gain),
 	SOC_SINGLE("AVC Integrator Response", SGTL5000_DAP_AVC_CTRL, 8, 3, 0),
 	SOC_SINGLE_EXT_TLV("AVC Threshold Volume", SGTL5000_DAP_AVC_THRESHOLD,
-			0, 96, 0, avc_get_threshold, avc_put_threshold,
-			avc_threshold),
+			   0, 96, 0, avc_get_threshold, avc_put_threshold,
+			   avc_threshold),
 
-	SOC_SINGLE_TLV("BASS 0", SGTL5000_DAP_EQ_BASS_BAND0,
-	0, 0x5F, 0, bass_band),
+	SOC_SINGLE_TLV("BASS 0", SGTL5000_DAP_EQ_BASS_BAND0, 0, 0x5F, 0,
+		       bass_band),
 
-	SOC_SINGLE_TLV("BASS 1", SGTL5000_DAP_EQ_BASS_BAND1,
-	0, 0x5F, 0, bass_band),
+	SOC_SINGLE_TLV("BASS 1", SGTL5000_DAP_EQ_BASS_BAND1, 0, 0x5F, 0,
+		       bass_band),
 
-	SOC_SINGLE_TLV("BASS 2", SGTL5000_DAP_EQ_BASS_BAND2,
-	0, 0x5F, 0, bass_band),
+	SOC_SINGLE_TLV("BASS 2", SGTL5000_DAP_EQ_BASS_BAND2, 0, 0x5F, 0,
+		       bass_band),
 
-	SOC_SINGLE_TLV("BASS 3", SGTL5000_DAP_EQ_BASS_BAND3,
-	0, 0x5F, 0, bass_band),
+	SOC_SINGLE_TLV("BASS 3", SGTL5000_DAP_EQ_BASS_BAND3, 0, 0x5F, 0,
+		       bass_band),
 
-	SOC_SINGLE_TLV("BASS 4", SGTL5000_DAP_EQ_BASS_BAND4,
-	0, 0x5F, 0, bass_band),
+	SOC_SINGLE_TLV("BASS 4", SGTL5000_DAP_EQ_BASS_BAND4, 0, 0x5F, 0,
+		       bass_band),
 };
 
 /* mute the codec used by alsa core */
@@ -1127,26 +1150,40 @@ static int sgtl5000_set_bias_level(struct snd_soc_component *component,
 {
 	struct sgtl5000_priv *sgtl = snd_soc_component_get_drvdata(component);
 	int ret;
+	enum snd_soc_bias_level old_level =
+		snd_soc_component_get_bias_level(component);
+	dev_dbg(sgtl->dev, "%s: %d -> %d\n", __func__, old_level, level);
 
-	switch (level) {
-	case SND_SOC_BIAS_ON:
-	case SND_SOC_BIAS_PREPARE:
-	case SND_SOC_BIAS_STANDBY:
-		regcache_cache_only(sgtl->regmap, false);
-		ret = regcache_sync(sgtl->regmap);
-		if (ret) {
-			regcache_cache_only(sgtl->regmap, true);
-			return ret;
-		}
-
-		snd_soc_component_update_bits(component, SGTL5000_CHIP_ANA_POWER,
-				    SGTL5000_REFTOP_POWERUP,
-				    SGTL5000_REFTOP_POWERUP);
-		break;
+	switch (old_level) {
 	case SND_SOC_BIAS_OFF:
-		regcache_cache_only(sgtl->regmap, true);
-		snd_soc_component_update_bits(component, SGTL5000_CHIP_ANA_POWER,
-				    SGTL5000_REFTOP_POWERUP, 0);
+		if (level != SND_SOC_BIAS_OFF) {
+			regcache_cache_only(sgtl->regmap, false);
+			ret = regcache_sync(sgtl->regmap);
+			if (ret) {
+				regcache_cache_only(sgtl->regmap, true);
+				return ret;
+			}
+		}
+		break;
+
+	case SND_SOC_BIAS_STANDBY:
+		switch (level) {
+		case SND_SOC_BIAS_PREPARE:
+			snd_soc_component_update_bits(component,
+						      SGTL5000_CHIP_ANA_POWER,
+						      SGTL5000_REFTOP_POWERUP,
+						      SGTL5000_REFTOP_POWERUP);
+			break;
+		case SND_SOC_BIAS_OFF:
+			regcache_cache_only(sgtl->regmap, true);
+			snd_soc_component_update_bits(component,
+						      SGTL5000_CHIP_ANA_POWER,
+						      SGTL5000_REFTOP_POWERUP,
+						      0);
+		default:
+			break;
+		}
+	default:
 		break;
 	}
 
@@ -1592,6 +1629,7 @@ static int sgtl5000_i2c_probe(struct i2c_client *client,
 	if (!sgtl5000)
 		return -ENOMEM;
 
+	sgtl5000->dev = &client->dev;
 	i2c_set_clientdata(client, sgtl5000);
 
 	ret = sgtl5000_enable_regulators(client);
@@ -1757,6 +1795,9 @@ static int sgtl5000_i2c_probe(struct i2c_client *client,
 		} else {
 			sgtl5000->micbias_voltage = 0;
 		}
+		sgtl5000->micbias_always_on =
+			of_property_read_bool(np, "micbias-always-on");
+		sgtl5000->capless = of_property_read_bool(np, "capless");
 	}
 
 	sgtl5000->lrclk_strength = I2S_LRCLK_STRENGTH_LOW;
