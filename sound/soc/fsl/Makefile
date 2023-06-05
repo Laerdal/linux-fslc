@@ -96,6 +96,7 @@ obj-$(CONFIG_SND_SOC_IMX_PCM512X) += snd-soc-imx-pcm512x.o
 obj-$(CONFIG_SND_SOC_IMX6QDL_HDMI) += snd-soc-imx6qdl-hdmi.o
 obj-$(CONFIG_SND_SOC_LM_PCM1681) += snd-soc-lm-pcm1681.o
 obj-$(CONFIG_SND_SOC_LM_SIMPADP) += snd-soc-lm-wm8962.o
+obj-$(CONFIG_SND_SOC_LM_SGTL5000) += snd-soc-lm-sgtl5000.o
 
 AFLAGS_hdmi_pcm.o := -march=armv7-a -mtune=cortex-a9 -mfpu=neon -mfloat-abi=softfp
 obj-$(CONFIG_SND_SOC_LM_SIMPADP) += snd-soc-lm-wm8960.o
