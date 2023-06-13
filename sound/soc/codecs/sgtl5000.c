@@ -1508,8 +1508,8 @@ static int sgtl5000_probe(struct snd_soc_component *component)
 	snd_soc_component_update_bits(component, SGTL5000_CHIP_REF_CTRL,
 				SGTL5000_SMALL_POP, SGTL5000_SMALL_POP);
 
-	/* disable short cut detector */
-	snd_soc_component_write(component, SGTL5000_CHIP_SHORT_CTRL, 0);
+	/* enable short cut detector */
+	snd_soc_component_write(component, SGTL5000_CHIP_SHORT_CTRL, 5);
 
 	snd_soc_component_write(component, SGTL5000_CHIP_DIG_POWER,
 			SGTL5000_ADC_EN | SGTL5000_DAC_EN);

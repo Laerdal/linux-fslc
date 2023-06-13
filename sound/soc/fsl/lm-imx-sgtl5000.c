@@ -183,7 +183,7 @@ static int imx_sp2_audio_iphone_event(struct notifier_block *nb,
 		break;
 	case SND_JACK_HEADPHONE:
 		envp[0] = "NAME=headphone";
-		data->mic_connected = true;
+		data->mic_connected = false;
 		data->hp_connected = true;
 		state = 2;
 		break;
