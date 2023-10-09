@@ -18,6 +18,7 @@
 #include <linux/module.h>
 #include <linux/mxcfb.h>
 #include <linux/of_device.h>
+#include <linux/gpio/consumer.h>
 #include <linux/pinctrl/consumer.h>
 #include <linux/platform_device.h>
 
@@ -27,6 +28,7 @@ struct mxc_lcd_platform_data {
 	u32 default_ifmt;
 	u32 ipu_id;
 	u32 disp_id;
+	struct gpio_desc *enable_gpio;
 };
 
 struct mxc_lcdif_data {
@@ -46,6 +48,12 @@ static struct fb_videomode lcdif_modedb[] = {
 	{
 	/* 800x480 @ 60 Hz , pixel clk @ 32MHz */
 	"SEIKO-WVGA", 60, 800, 480, 29850, 89, 164, 23, 10, 10, 10,
+	FB_SYNC_CLK_LAT_FALL,
+	FB_VMODE_NONINTERLACED,
+	0,},
+	{
+	/* 640x480 @ 60 Hz , pixel clk @ 23.5MHz */
+	"SIMPAD-VGA", 60, 640, 480, 40000, 16, 114, 10, 32, 30, 3,
 	FB_SYNC_CLK_LAT_FALL,
 	FB_VMODE_NONINTERLACED,
 	0,},
@@ -89,6 +97,19 @@ static int lcdif_init(struct mxc_dispdrv_handle *disp,
 	return ret;
 }
 
+static int mxc_lcdif_enable(struct mxc_dispdrv_handle *disp, struct fb_info * fbi) {
+	struct mxc_lcd_platform_data *plat_data = mxc_dispdrv_getdata(disp);
+	gpiod_set_value(plat_data->enable_gpio, 1);
+	dev_dbg(fbi->device, "%s\n", __func__);
+	return 0;
+}
+
+static void mxc_lcdif_disable(struct mxc_dispdrv_handle *disp, struct fb_info * fbi) {
+	struct mxc_lcd_platform_data *plat_data = mxc_dispdrv_getdata(disp);
+	gpiod_set_value(plat_data->enable_gpio, 0);
+	dev_dbg(fbi->device, "%s\n", __func__);
+}
+
 void lcdif_deinit(struct mxc_dispdrv_handle *disp)
 {
 	/*TODO*/
@@ -126,6 +147,20 @@ static int lcd_get_of_property(struct platform_device *pdev,
 
 	plat_data->ipu_id = ipu_id;
 	plat_data->disp_id = disp_id;
+
+
+	plat_data->enable_gpio = devm_gpiod_get_optional(&pdev->dev, "enable", GPIOD_ASIS);
+	if (IS_ERR(plat_data->enable_gpio)) {
+		dev_err(&pdev->dev, "Failed getting gpio");
+		return PTR_ERR(plat_data->enable_gpio);
+	}
+	if (plat_data->enable_gpio) {
+		dev_dbg(&pdev->dev, "Using enable gpio\n");
+		lcdif_drv.enable = mxc_lcdif_enable;
+		lcdif_drv.disable = mxc_lcdif_disable;
+		gpiod_direction_output(plat_data->enable_gpio, 1);
+	}
+
 	if (!strncmp(default_ifmt, "RGB24", 5))
 		plat_data->default_ifmt = IPU_PIX_FMT_RGB24;
 	else if (!strncmp(default_ifmt, "BGR24", 5))
@@ -220,18 +255,8 @@ static struct platform_driver mxc_lcdif_driver = {
 	.remove = mxc_lcdif_remove,
 };
 
-static int __init mxc_lcdif_init(void)
-{
-	return platform_driver_register(&mxc_lcdif_driver);
-}
-
-static void __exit mxc_lcdif_exit(void)
-{
-	platform_driver_unregister(&mxc_lcdif_driver);
-}
-
-module_init(mxc_lcdif_init);
-module_exit(mxc_lcdif_exit);
+module_platform_driver(mxc_lcdif_driver);
+MODULE_DEVICE_TABLE(of, imx_lcd_dt_ids);
 
 MODULE_AUTHOR("Freescale Semiconductor, Inc.");
 MODULE_DESCRIPTION("i.MX ipuv3 LCD extern port driver");
