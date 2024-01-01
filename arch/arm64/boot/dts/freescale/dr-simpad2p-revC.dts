@@ -72,6 +72,7 @@
 			regulator-max-microvolt = <5000000>;
 			gpio = <&gpio1 14 GPIO_ACTIVE_HIGH>;
 			enable-active-high;
+			startup-delay-us = <3000>;
 			status = "okay";
 		};
 
@@ -683,7 +684,7 @@ BIT2:1 STRENGTH x1,x2,x4,x6
 			MX8MP_IOMUXC_SPDIF_EXT_CLK__GPIO5_IO05		0x080		/* Mic detect MIC_DET */
 			MX8MP_IOMUXC_SPDIF_RX__GPIO5_IO04			0x142		/* HOST_WAKEUP_BT, PU */
 			MX8MP_IOMUXC_SPDIF_TX__GPIO5_IO03			0x180		/* BT_WAKEUP_HOST, PD */
-			MX8MP_IOMUXC_GPIO1_IO14__GPIO1_IO14			0x006 		/* EN-USBC_Vbus_5V */
+			MX8MP_IOMUXC_GPIO1_IO14__GPIO1_IO14			0x106 		/* EN-USBC_Vbus_5V */
 
 			MX8MP_IOMUXC_GPIO1_IO01__ANAMIX_REF_CLK_24M	0x016		/* Audio MCLK 24Mhz */
 			MX8MP_IOMUXC_I2C4_SDA__GPIO5_IO21			0x002		/* GP-MODE-BOOST_5V */
@@ -997,9 +998,11 @@ BIT2:1 STRENGTH x1,x2,x4,x6
 
 &usb_dwc3_1 {
 	dr_mode = "otg";
+	/*
 	hnp-disable;
 	srp-disable;
 	adp-disable;
+	*/
 	usb-role-switch;
 	role-switch-default-mode = "device";
 	snps,dis-u1-entry-quirk;
