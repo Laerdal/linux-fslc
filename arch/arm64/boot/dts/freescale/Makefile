@@ -190,7 +190,6 @@ dtb-$(CONFIG_ARCH_MXC) += imx8mp-evk-revb4-basler-ov2775.dtb
 dtb-$(CONFIG_ARCH_MXC) += imx8mp-evk-revb4-dual-basler.dtb
 dtb-$(CONFIG_ARCH_MXC) += imx8mp-evk-revb4-dual-ov2775.dtb
 dtb-$(CONFIG_ARCH_MXC) += imx8mp-evk-revb4-spdif-lb.dtb
-dtb-$(CONFIG_ARCH_MXC) += imx8mp-evk-revb4-os08a20-ov5640.dtb
 dtb-$(CONFIG_ARCH_MXC) += imx8mp-evk-revb4-os08a20.dtb
 dtb-$(CONFIG_ARCH_MXC) += imx8mp-evk-revb4-dual-os08a20.dtb
 dtb-$(CONFIG_ARCH_MXC) += imx8mp-evk-revb4-iqaudio-dacplus.dtb
