@@ -256,9 +256,16 @@ static ssize_t queue_##_name##_show(struct gendisk *disk, char *page)	\
 		!!(disk->queue->limits.features & _feature));		\
 }
 
-QUEUE_SYSFS_FEATURE_SHOW(poll, BLK_FEAT_POLL);
 QUEUE_SYSFS_FEATURE_SHOW(fua, BLK_FEAT_FUA);
 QUEUE_SYSFS_FEATURE_SHOW(dax, BLK_FEAT_DAX);
+
+static ssize_t queue_poll_show(struct gendisk *disk, char *page)
+{
+	if (queue_is_mq(disk->queue))
+		return sysfs_emit(page, "%u\n", blk_mq_can_poll(disk->queue));
+	return sysfs_emit(page, "%u\n",
+		!!(disk->queue->limits.features & BLK_FEAT_POLL));
+}
 
 static ssize_t queue_zoned_show(struct gendisk *disk, char *page)
 {
@@ -690,11 +697,11 @@ queue_attr_store(struct kobject *kobj, struct attribute *attr,
 			return res;
 	}
 
-	mutex_lock(&q->sysfs_lock);
 	blk_mq_freeze_queue(q);
+	mutex_lock(&q->sysfs_lock);
 	res = entry->store(disk, page, length);
-	blk_mq_unfreeze_queue(q);
 	mutex_unlock(&q->sysfs_lock);
+	blk_mq_unfreeze_queue(q);
 	return res;
 }
 
