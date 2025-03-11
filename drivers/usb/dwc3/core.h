@@ -30,7 +30,6 @@
 #include <linux/ulpi/interface.h>
 
 #include <linux/phy/phy.h>
-#include "../host/xhci-plat.h"
 
 #include <linux/power_supply.h>
 
