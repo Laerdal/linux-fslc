@@ -54,12 +54,12 @@ struct board_variant {
 };
 
 struct card_options {
-	int hp_gpio;
+    struct gpio_desc *hp_gpio;
 	int hp_active_level;
-	int mic_gpio;
+	struct gpio_desc *mic_gpio;
 	int mic_active_level;
-	int iphone_jack;
-	int spk_amp_gpio;
+	bool iphone_jack;
+	struct gpio_desc *spk_amp_gpio;
 	int spk_amp_active_level;
 	bool auto_switch_speaker;
 	bool broken_mic_detect;
@@ -96,10 +96,12 @@ static struct snd_soc_jack_pin imx_hp_jack_pins[] = {
 };
 
 
-static struct snd_soc_jack_gpio imx_hp_jack_gpio= {
+static struct snd_soc_jack_gpio imx_hp_jack_gpio[] = {
+	{
 		.name = "headphone detect",
 		.report = SND_JACK_HEADPHONE,
 		.debounce_time = 200,
+	},
 };
 
 static struct snd_soc_jack_pin imx_mic_jack_pins[] = {
@@ -108,10 +110,12 @@ static struct snd_soc_jack_pin imx_mic_jack_pins[] = {
 		.mask = SND_JACK_MICROPHONE,
 	},
 };
-static struct snd_soc_jack_gpio imx_mic_jack_gpio = {
+static struct snd_soc_jack_gpio imx_mic_jack_gpio[] = {
+    {
 	.name = "microphone detect",
 	.report = SND_JACK_MICROPHONE,
 	.debounce_time = 200,
+    },
 };
 
 static ssize_t show_headphone(struct device *dev, struct device_attribute *attr, char *buf)
@@ -120,19 +124,19 @@ static ssize_t show_headphone(struct device *dev, struct device_attribute *attr,
 	struct imx_wm8960_data *data = snd_soc_card_get_drvdata(card);
 	int hp_status;
 
-	if (!gpio_is_valid(data->options.hp_gpio)) {
+	if (IS_ERR(data->options.hp_gpio)) {
 		strcpy(buf, "no detect gpio connected\n");
 		return strlen(buf);
 	}
 
 	/* Check if headphone is plugged in */
-	hp_status = gpio_get_value(data->options.hp_gpio) ? 1 : 0;
+	hp_status = gpiod_get_value(data->options.hp_gpio);
 
-	if (hp_status == data->options.hp_active_level)
+	if (hp_status == 1) {
 		strcpy(buf, "present\n");
-	else
+	} else {
 		strcpy(buf, "none\n");
-
+	}
 	return strlen(buf);
 }
 
@@ -144,24 +148,25 @@ static ssize_t show_mic(struct device *dev, struct device_attribute *attr, char 
 	struct imx_wm8960_data *data = snd_soc_card_get_drvdata(card);
 	int mic_status, hp_status;
 
-	hp_status = gpio_get_value(data->options.hp_gpio) ? 1 : 0;
-	if (!gpio_is_valid(data->options.mic_gpio)) {
-		if (hp_status == data->options.hp_active_level)
+	hp_status = gpiod_get_value(data->options.hp_gpio);
+	if (IS_ERR(data->options.mic_gpio)) {
+		if (hp_status == 1) {
 			strcpy(buf, "present\n");
-		else
+		} else{
 			strcpy(buf, "none\n");
+		}
 		return strlen(buf);
 	}
 
 	/* Check if analog microphone is plugged in */
-	mic_status = gpio_get_value(data->options.mic_gpio) ? 1 : 0;
+	mic_status = gpiod_get_value(data->options.mic_gpio);
 	strcpy(buf, "none\n");
 	if (data->options.iphone_jack) {
-		if (mic_status == data->options.mic_active_level && hp_status == data->options.hp_active_level)
+		if (mic_status == 1 && hp_status == 1)
 			strcpy(buf, "present\n");
 	}
 	else {
-		if (mic_status == data->options.mic_active_level)
+		if (mic_status == 1)
 			strcpy(buf, "present\n");
 	}
 	return strlen(buf);
@@ -173,9 +178,9 @@ static int hpjack_status_check(void *priv)
 	struct imx_wm8960_data *data = priv;
 	char *envp[3], *buf;
 	int hp_status, ret;
-	if (!gpio_is_valid(data->options.hp_gpio))
+	if (IS_ERR(data->options.hp_gpio))
 		return 0;
-	hp_status = gpio_get_value(data->options.hp_gpio) ? 1 : 0;
+	hp_status = gpiod_get_value(data->options.hp_gpio);
 
 	dev_info(&data->pdev->dev, "%s: hpdet = %d (%d)\n", __func__, hp_status, data->options.hp_active_level);
 	buf = kmalloc(32, GFP_ATOMIC);
@@ -187,19 +192,19 @@ static int hpjack_status_check(void *priv)
 	envp[0] = "NAME=headphone";
 	ret = SND_JACK_HEADPHONE;
 
-	if (hp_status == data->options.hp_active_level) {
+	if (hp_status == 1) {
 		snprintf(buf, 32, "STATE=%d", 2);
 		if (data->options.auto_switch_speaker) {
 			snd_soc_dapm_enable_pin(&data->card.dapm, "Headphone Jack");
 			snd_soc_dapm_disable_pin(&data->card.dapm, "Ext Spk");
 		}
 
-		if (!gpio_is_valid(data->options.mic_gpio)) {
+		if (IS_ERR(data->options.mic_gpio)) {
 			ret = SND_JACK_HEADSET;
 			envp[0] = "NAME=headset";
 		}
 
-		if (data->options.iphone_jack || !gpio_is_valid(data->options.mic_gpio)) {
+		if (data->options.iphone_jack || IS_ERR(data->options.mic_gpio)) {
 			snd_soc_dapm_force_enable_pin(&data->card.dapm, "MICB");
 		}
 		BUG_ON(data->card.snd_card == NULL);
@@ -210,7 +215,7 @@ static int hpjack_status_check(void *priv)
 			snd_soc_dapm_enable_pin(&data->card.dapm, "Ext Spk");
 			snd_soc_dapm_disable_pin(&data->card.dapm, "Headphone Jack");
 		}
-		if (data->options.iphone_jack || !gpio_is_valid(data->options.mic_gpio))
+		if (data->options.iphone_jack || IS_ERR(data->options.mic_gpio))
 			snd_soc_dapm_disable_pin(&data->card.dapm, "MICB");
 
 		ret = 0;
@@ -232,11 +237,11 @@ static int micjack_status_check(void *priv)
 	struct imx_wm8960_data *data = priv;
 	char *envp[3], *buf;
 	int mic_status, ret=0, hp_status;
-	if (!gpio_is_valid(data->options.mic_gpio))
+	if (IS_ERR(data->options.mic_gpio))
 		return 0;
 
-	hp_status = gpio_get_value(data->options.hp_gpio) ? 1 : 0;
-	mic_status = gpio_get_value(data->options.mic_gpio) ? 1 : 0;
+	hp_status = gpiod_get_value(data->options.hp_gpio);
+	mic_status = gpiod_get_value(data->options.mic_gpio);
 
 	buf = kmalloc(32, GFP_ATOMIC);
 	if (!buf) {
@@ -245,15 +250,15 @@ static int micjack_status_check(void *priv)
 	}
 
 	if (data->options.iphone_jack) {
-		if (hp_status != data->options.hp_active_level) {
+		if (hp_status != 1) {
 			dev_dbg(&data->pdev->dev, "%s: no iphone jack present\n", __func__);
 			snprintf(buf, 32, "STATE=%d", 0);
 			ret = 0;
 		}
 		else {
-			if (mic_status == data->options.mic_active_level) {
+			if (mic_status == 1) {
 				snprintf(buf, 32, "STATE=%d", 2);
-				ret = imx_mic_jack_gpio.report;
+				ret = imx_mic_jack_gpio->report;
 				snd_soc_dapm_force_enable_pin(&data->card.dapm, "AMIC");
 			} else {
 				snprintf(buf, 32, "STATE=%d", 0);
@@ -263,12 +268,12 @@ static int micjack_status_check(void *priv)
 		}
 	}
 	else {
-		if (mic_status == data->options.mic_active_level) {
+		if (mic_status == 1) {
 			snprintf(buf, 32, "STATE=%d", 2);
 			dev_dbg(&data->pdev->dev, "%s: Enable AMIC\n", __func__);
 			snd_soc_dapm_force_enable_pin(&data->card.dapm, "MICB");
 			snd_soc_dapm_force_enable_pin(&data->card.dapm, "AMIC");
-			ret = imx_mic_jack_gpio.report;
+			ret = imx_mic_jack_gpio->report;
 		} else {
 			snprintf(buf, 32, "STATE=%d", 0);
 			dev_dbg(&data->pdev->dev, "%s: Disable AMIC\n", __func__);
@@ -292,12 +297,12 @@ static int micjack_status_check(void *priv)
 static int imx_wm8960_spk_amp_event(struct snd_soc_dapm_widget *w, struct snd_kcontrol *k, int event)
 {
 	struct imx_wm8960_data *data = snd_soc_card_get_drvdata(w->dapm->card);
-	if (gpio_is_valid(data->options.spk_amp_gpio)) {
+	if (!IS_ERR(data->options.spk_amp_gpio)) {
 		dev_dbg(&data->pdev->dev, "%s: Spk Amp %d\n", __func__, event);
 		if (SND_SOC_DAPM_EVENT_ON(event))
-			gpio_set_value(data->options.spk_amp_gpio, data->options.spk_amp_active_level);
+			gpiod_set_value(data->options.spk_amp_gpio, 1);
 		else
-			gpio_set_value(data->options.spk_amp_gpio, data->options.spk_amp_active_level ? 0 : 1);
+			gpiod_set_value(data->options.spk_amp_gpio, 0);
 	}
 	return 0;
 }
@@ -317,27 +322,32 @@ static const struct snd_soc_dapm_widget cpum_dapm_widgets[] = {
 static int imx_wm8960_jack_init(struct imx_wm8960_data *data)
 {
 	int ret;
-	if (gpio_is_valid(data->options.hp_gpio)) {
-		imx_hp_jack_gpio.gpio = data->options.hp_gpio;
-		imx_hp_jack_gpio.data = data;
-		imx_hp_jack_gpio.jack_status_check = hpjack_status_check;
-		imx_hp_jack_gpio.invert = data->options.hp_active_level ? 0 : 1;
-		ret = snd_soc_card_jack_new(&data->card, "Headphone Jack", SND_JACK_HEADPHONE,
-						 &data->options.headphone_jack, imx_hp_jack_pins,
+	if (!IS_ERR(data->options.hp_gpio)) {
+		imx_hp_jack_gpio[0].data = data;
+		imx_hp_jack_gpio[0].desc = data->options.hp_gpio;
+		imx_hp_jack_gpio[0].jack_status_check = hpjack_status_check;
+		imx_hp_jack_gpio[0].invert = data->options.hp_active_level;
+		ret = snd_soc_card_jack_new_pins(&data->card, "Headphone Jack",
+						 SND_JACK_HEADPHONE,
+						 &data->options.headphone_jack,
+						 imx_hp_jack_pins,
 						 ARRAY_SIZE(imx_hp_jack_pins));
-		snd_soc_jack_add_gpios(&data->options.headphone_jack, 1, &imx_hp_jack_gpio);
+		snd_soc_jack_add_gpios(&data->options.headphone_jack, 1, imx_hp_jack_gpio);
 	}
-	if (gpio_is_valid(data->options.mic_gpio)) {
-		imx_mic_jack_gpio.gpio = data->options.mic_gpio;
-		imx_mic_jack_gpio.data = data;
-		imx_mic_jack_gpio.jack_status_check = micjack_status_check;
-		imx_mic_jack_gpio.invert = data->options.mic_active_level ? 0 : 1;
+	if (!IS_ERR(data->options.mic_gpio)) {
+		imx_mic_jack_gpio[0].data = data;
+		imx_mic_jack_gpio[0].desc = data->options.mic_gpio;
+		imx_mic_jack_gpio[0].jack_status_check = micjack_status_check;
+		imx_mic_jack_gpio[0].invert = data->options.mic_active_level;
 
-		snd_soc_card_jack_new(&data->card, "AMIC", SND_JACK_MICROPHONE, &data->options.mic_jack,
-					   imx_mic_jack_pins, ARRAY_SIZE(imx_mic_jack_pins));
-		snd_soc_jack_add_gpios(&data->options.mic_jack, 1, &imx_mic_jack_gpio);
+		ret = snd_soc_card_jack_new_pins(&data->card, "AMIC",
+						 SND_JACK_MICROPHONE,
+						 &data->options.mic_jack,
+						 imx_mic_jack_pins,
+						 ARRAY_SIZE(imx_mic_jack_pins));
+		snd_soc_jack_add_gpios(&data->options.mic_jack, 1, imx_mic_jack_gpio);
 	}
-	if (gpio_is_valid(data->options.hp_gpio)) {
+	if (!IS_ERR(data->options.hp_gpio)) {
 		ret = device_create_file(&data->pdev->dev, &dev_attr_headphone);
 		if (ret) {
 			dev_err(&data->pdev->dev, "create hp attr failed (%d)\n", ret);
@@ -345,8 +355,7 @@ static int imx_wm8960_jack_init(struct imx_wm8960_data *data)
 		data->options.hp_attr = true;
 	}
 
-	if (gpio_is_valid(data->options.mic_gpio) ||
-	    (data->options.iphone_jack && gpio_is_valid(data->options.hp_gpio))) {
+	if (!IS_ERR(data->options.mic_gpio) || (data->options.iphone_jack && !IS_ERR(data->options.hp_gpio))) {
 		ret = device_create_file(&data->pdev->dev, &dev_attr_microphone);
 		if (ret) {
 			dev_err(&data->pdev->dev, "create mic attr failed (%d)\n", ret);
@@ -407,7 +416,6 @@ static int imx_wm8960_probe(struct platform_device *pdev)
 	struct i2c_client *codec_i2c;
 	struct imx_wm8960_data *data;
 	int ret;
-	enum of_gpio_flags gpio_flags;
 	int int_port, ext_port;
 	const struct of_device_id *of_id = of_match_device(imx_wm8960_dt_ids, &pdev->dev);
 	const struct board_variant *board_info = of_id ? (struct board_variant*)of_id->data : NULL;
@@ -501,22 +509,21 @@ static int imx_wm8960_probe(struct platform_device *pdev)
 	data->clk_frequency = clk_get_rate(data->codec_clk);
 	dev_info(&pdev->dev, "%s: codec clock is %d\n", __func__, data->clk_frequency);
 
-	data->options.hp_gpio = of_get_named_gpio_flags(np, "hp-det-gpios", 0, &gpio_flags);
-	data->options.hp_active_level = (gpio_flags & OF_GPIO_ACTIVE_LOW) ? 0 : 1;
+	data->options.hp_gpio = devm_gpiod_get(&pdev->dev, "hp-det", GPIOD_IN);
+	if (IS_ERR(data->options.hp_gpio))
+		dev_err(&pdev->dev, "%s: Failed to get 'hp-det-gpios' gpio", __func__);
+    data->options.hp_active_level = gpiod_is_active_low(data->options.hp_gpio);
 
-	data->options.iphone_jack = of_property_read_bool(np, "iphone-jack");
+	data->options.iphone_jack = of_property_read_bool(pdev->dev.of_node, "iphone-jack");
 
-	data->options.mic_gpio = of_get_named_gpio_flags(np, "mic-det-gpios", 0, &gpio_flags);
-	data->options.mic_active_level = gpio_flags & OF_GPIO_ACTIVE_LOW ? 0 : 1;
+	data->options.mic_gpio = devm_gpiod_get(&pdev->dev, "mic-det", GPIOD_IN);
+	if (IS_ERR(data->options.mic_gpio))
+		dev_err(&pdev->dev, "%s: Failed to get 'mic-det-gpios' gpio", __func__);
+	data->options.mic_active_level = gpiod_is_active_low(data->options.mic_gpio);
 
-	data->options.spk_amp_gpio = of_get_named_gpio_flags(np, "speaker-amp-gpios", 0, &gpio_flags);
-	if (gpio_is_valid(data->options.spk_amp_gpio)) {
-		data->options.spk_amp_active_level = gpio_flags & OF_GPIO_ACTIVE_LOW ? 0 : 1;
-		if (gpio_request_one(data->options.spk_amp_gpio, 0, "wm8960-speaker-amp")) {
-			dev_err(&pdev->dev, "%s: Unable to request gpio %d for amp\n", __func__, data->options.spk_amp_gpio);
-			data->options.spk_amp_gpio = -1;
-		}
-
+	data->options.spk_amp_gpio = devm_gpiod_get_optional(&pdev->dev, "speaker-amp", GPIOD_ASIS);
+	if (IS_ERR(data->options.spk_amp_gpio)) {
+			dev_err(&pdev->dev, "%s: Unable to request speaker-amp-gpios for amp\n", __func__);
 	}
 
 	data->options.auto_switch_speaker = of_property_read_bool(np, "speaker-auto-switch");
