@@ -1761,6 +1761,7 @@ EXPORT_SYMBOL_GPL(dsa_unregister_switch);
 void dsa_switch_shutdown(struct dsa_switch *ds)
 {
 	struct net_device *master, *slave_dev;
+	LIST_HEAD(close_list);
 	struct dsa_port *dp;
 
 	mutex_lock(&dsa2_mutex);
@@ -1769,6 +1770,11 @@ void dsa_switch_shutdown(struct dsa_switch *ds)
 		goto out;
 
 	rtnl_lock();
+
+	dsa_switch_for_each_cpu_port(dp, ds)
+		list_add(&dp->master->close_list, &close_list);
+
+	dev_close_many(&close_list, true);
 
 	list_for_each_entry(dp, &ds->dst->ports, list) {
 		if (dp->ds != ds)
@@ -1780,6 +1786,7 @@ void dsa_switch_shutdown(struct dsa_switch *ds)
 		master = dp->cpu_dp->master;
 		slave_dev = dp->slave;
 
+		netif_device_detach(slave_dev);
 		netdev_upper_dev_unlink(master, slave_dev);
 	}
 
