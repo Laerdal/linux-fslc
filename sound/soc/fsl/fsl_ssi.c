@@ -1604,8 +1604,10 @@ static int fsl_ssi_probe(struct platform_device *pdev)
 
 	if (ssi->soc->imx) {
 		ret = fsl_ssi_imx_probe(pdev, ssi, iomem);
-		if (ret)
-			return ret;
+		if (ret) {
+			goto error_probe;
+		}
+		
 	}
 
 	if (fsl_ssi_is_ac97(ssi)) {
@@ -1673,6 +1675,9 @@ error_ac97_ops:
 
 	if (ssi->soc->imx)
 		fsl_ssi_imx_clean(pdev, ssi);
+
+error_probe:
+	pm_runtime_disable(&pdev->dev);
 
 	return ret;
 }
