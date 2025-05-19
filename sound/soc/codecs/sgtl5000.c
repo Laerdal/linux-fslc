@@ -166,13 +166,9 @@ static inline int hp_sel_input(struct snd_soc_component *component)
 static inline u16 mute_output(struct snd_soc_component *component,
 			      u16 mute_mask)
 {
-	struct sgtl5000_priv *sgtl5000 =
-		snd_soc_component_get_drvdata(component);
-
 	u16 mute_reg = snd_soc_component_read(component,
 					      SGTL5000_CHIP_ANA_CTRL);
-	dev_dbg(sgtl5000->dev, "%s: mute_mask 0x%x\n", __func__,
-		(unsigned)mute_mask);
+
 	snd_soc_component_update_bits(component, SGTL5000_CHIP_ANA_CTRL,
 			    mute_mask, mute_mask);
 	return mute_reg;
@@ -181,11 +177,6 @@ static inline u16 mute_output(struct snd_soc_component *component,
 static inline void restore_output(struct snd_soc_component *component,
 				  u16 mute_mask, u16 mute_reg)
 {
-	struct sgtl5000_priv *sgtl5000 =
-		snd_soc_component_get_drvdata(component);
-
-	dev_dbg(sgtl5000->dev, "%s: mute_mask 0x%x, mute_reg 0x%x\n", __func__,
-		(unsigned)mute_mask, (unsigned)mute_reg);
 	snd_soc_component_update_bits(component, SGTL5000_CHIP_ANA_CTRL,
 		mute_mask, mute_reg);
 }
@@ -332,7 +323,6 @@ static int vag_and_mute_control(struct snd_soc_component *component,
 	struct sgtl5000_priv *sgtl5000 =
 		snd_soc_component_get_drvdata(component);
 
-	dev_dbg(sgtl5000->dev, "%s: event %d, src %d\n", __func__, event, event_source);
 	switch (event) {
 	case SND_SOC_DAPM_PRE_PMU:
 		sgtl5000->mute_state[event_source] =
@@ -462,7 +452,9 @@ static const struct snd_soc_dapm_widget sgtl5000_dapm_widgets[] = {
 	SND_SOC_DAPM_OUTPUT("HP_OUT"),
 	SND_SOC_DAPM_OUTPUT("LINE_OUT"),
 
-	SND_SOC_DAPM_MIC("Mic Bias", mic_bias_event),
+	SND_SOC_DAPM_SUPPLY("Mic Bias", SGTL5000_CHIP_MIC_CTRL, 8, 0,
+			    mic_bias_event,
+			    SND_SOC_DAPM_POST_PMU | SND_SOC_DAPM_PRE_PMD),
 
 	SND_SOC_DAPM_PGA_E("HP", SGTL5000_CHIP_ANA_POWER, 4, 0, NULL, 0,
 			   headphone_pga_event,
@@ -1653,8 +1645,9 @@ static int sgtl5000_i2c_probe(struct i2c_client *client)
 		if (ret == -ENOENT)
 			ret = -EPROBE_DEFER;
 
-		dev_err_probe(&client->dev, ret, "Failed to get mclock\n");
-
+		if (ret != -EPROBE_DEFER)
+			dev_err(&client->dev, "Failed to get mclock: %d\n",
+				ret);
 		goto disable_regs;
 	}
 

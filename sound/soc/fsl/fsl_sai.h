@@ -140,7 +140,6 @@
 
 /* SAI Transmit and Receive Configuration 4 Register */
 
-#define FSL_SAI_CR4_FCONT_MASK	BIT(28)
 #define FSL_SAI_CR4_FCONT	BIT(28)
 #define FSL_SAI_CR4_FCOMB_SHIFT BIT(26)
 #define FSL_SAI_CR4_FCOMB_SOFT  BIT(27)
@@ -317,8 +316,6 @@ struct fsl_sai {
 	unsigned int slots;
 	unsigned int slot_width;
 	unsigned int bclk_ratio;
-	int mclk_id_set;
-	bool is_mclk_provider;
 
 	const struct fsl_sai_soc_data *soc_data;
 	struct snd_soc_dai_driver cpu_dai_drv;

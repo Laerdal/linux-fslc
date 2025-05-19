@@ -3,6 +3,8 @@
 // Freescale ALSA SoC Digital Audio Interface (SAI) driver.
 //
 // Copyright 2012-2015 Freescale Semiconductor, Inc.
+
+#include <linux/clk.h>
 #include <linux/delay.h>
 #include <linux/dmaengine.h>
 #include <linux/module.h>
@@ -20,6 +22,7 @@
 #include <linux/mfd/syscon.h>
 #include <linux/mfd/syscon/imx6q-iomuxc-gpr.h>
 #include <linux/busfreq-imx.h>
+#include <linux/clk-provider.h>
 
 #include "fsl_sai.h"
 #include "fsl_utils.h"
@@ -262,7 +265,6 @@ static int fsl_sai_set_dai_sysclk_tr(struct snd_soc_dai *cpu_dai,
 	default:
 		return -EINVAL;
 	}
-	sai->mclk_id_set = clk_id;
 
 	regmap_update_bits(sai->regmap, FSL_SAI_xCR2(tx, ofs),
 			   FSL_SAI_CR2_MSEL_MASK, val_cr2);
@@ -281,8 +283,6 @@ static int fsl_sai_set_mclk_rate(struct snd_soc_dai *dai, int clk_id, unsigned i
 	ret = clk_set_rate(sai->mclk_clk[clk_id], freq);
 	if (ret < 0)
 		dev_err(dai->dev, "failed to set clock rate (%u): %d\n", freq, ret);
-	else
-		dev_info(dai->dev, "Set MCLK%d to %d\n", clk_id, freq);
 
 	return ret;
 }
@@ -492,8 +492,6 @@ static int fsl_sai_set_bclk(struct snd_soc_dai *dai, bool tx, u32 freq)
 	for (; id < FSL_SAI_MCLK_MAX; id++) {
 		int diff;
 
-		if (sai->mclk_id_set >= 0 && id != sai->mclk_id_set)
-			continue;
 		clk_rate = clk_get_rate(sai->mclk_clk[id]);
 		if (!clk_rate)
 			continue;
@@ -556,10 +554,8 @@ static int fsl_sai_set_bclk(struct snd_soc_dai *dai, bool tx, u32 freq)
 	else
 		return 0;
 
-    if (sai->mclk_id_set < 0) {
-        regmap_update_bits(sai->regmap, reg, FSL_SAI_CR2_MSEL_MASK,
-                   FSL_SAI_CR2_MSEL(sai->mclk_id[tx]));
-    }
+	regmap_update_bits(sai->regmap, reg, FSL_SAI_CR2_MSEL_MASK,
+			   FSL_SAI_CR2_MSEL(sai->mclk_id[tx]));
 
 	if (savediv == 1) {
 		regmap_update_bits(sai->regmap, reg,
@@ -611,6 +607,7 @@ static int fsl_sai_hw_params(struct snd_pcm_substream *substream,
 		slots = sai->bclk_ratio / slot_width;
 
 	pins = DIV_ROUND_UP(channels, slots);
+	dev_dbg(cpu_dai->dev, "%s: slots=%d, slot_w=%d\n", __func__, slots, slot_width);
 
 	/*
 	 * PDM mode, channels are independent
@@ -673,9 +670,6 @@ static int fsl_sai_hw_params(struct snd_pcm_substream *substream,
 		val_cr5 |= FSL_SAI_CR5_FBT(word_width - 1);
 
 	val_cr4 |= FSL_SAI_CR4_FRSZ(slots);
-
-	/* Set to avoid channel swap */
-	val_cr4 |= FSL_SAI_CR4_FCONT;
 
 	/* Set to output mode to avoid tri-stated data pins */
 	if (tx)
@@ -763,7 +757,7 @@ static int fsl_sai_hw_params(struct snd_pcm_substream *substream,
 
 	regmap_update_bits(sai->regmap, FSL_SAI_xCR4(tx, ofs),
 			   FSL_SAI_CR4_SYWD_MASK | FSL_SAI_CR4_FRSZ_MASK |
-			   FSL_SAI_CR4_CHMOD_MASK | FSL_SAI_CR4_FCONT_MASK,
+			   FSL_SAI_CR4_CHMOD_MASK,
 			   val_cr4);
 	regmap_update_bits(sai->regmap, FSL_SAI_xCR5(tx, ofs),
 			   FSL_SAI_CR5_WNW_MASK | FSL_SAI_CR5_W0W_MASK |
@@ -807,12 +801,12 @@ static void fsl_sai_config_disable(struct fsl_sai *sai, int dir)
 {
 	unsigned int ofs = sai->soc_data->reg_offset;
 	bool tx = dir == TX;
-	u32 xcsr, count = 100;
+	u32 xcsr, count = 100, mask;
 
-	dev_dbg(&sai->pdev->dev, "%s: dir = %d\n", __func__, dir);
-	if (!sai->is_mclk_provider) {
-		regmap_update_bits(sai->regmap, FSL_SAI_xCSR(tx, ofs),
-				   FSL_SAI_CSR_TERE, 0);
+	if (!(sai->soc_data->mclk_with_tere && sai->mclk_direction_output)) {
+		mask = FSL_SAI_CSR_TERE | FSL_SAI_CSR_BCE;
+
+		regmap_update_bits(sai->regmap, FSL_SAI_xCSR(tx, ofs), mask, 0);
 
 		/* TERE will remain set till the end of current frame */
 		do {
@@ -820,30 +814,22 @@ static void fsl_sai_config_disable(struct fsl_sai *sai, int dir)
 			regmap_read(sai->regmap, FSL_SAI_xCSR(tx, ofs), &xcsr);
 		} while (--count && xcsr & FSL_SAI_CSR_TERE);
 
-		regmap_update_bits(sai->regmap, FSL_SAI_xCSR(tx, ofs),
-				   FSL_SAI_CSR_FR, FSL_SAI_CSR_FR);
-	}
+		regmap_update_bits(sai->regmap, FSL_SAI_xCSR(tx, ofs), FSL_SAI_CSR_FR, FSL_SAI_CSR_FR);
 
-	/* This stuff may wreck the mclk to codec */
-#ifdef OLD_BLAH_BLAH
-	/*
-	 * For sai master mode, after several open/close sai,
-	 * there will be no frame clock, and can't recover
-	 * anymore. Add software reset to fix this issue.
-	 * This is a hardware bug, and will be fix in the
-	 * next sai version.
-	 *
-	 * In consumer mode, this can happen even after a
-	 * single open/close, especially if both tx and rx
-	 * are running concurrently.
-	 */
-	if (!sai->is_consumer_mode[tx]) {
-		/* Software Reset */
-		regmap_write(sai->regmap, FSL_SAI_xCSR(tx, ofs), FSL_SAI_CSR_SR);
-		/* Clear SR bit to finish the reset */
-		regmap_write(sai->regmap, FSL_SAI_xCSR(tx, ofs), 0);
+		/*
+		* For sai master mode, after several open/close sai,
+		* there will be no frame clock, and can't recover
+		* anymore. Add software reset to fix this issue.
+		* This is a hardware bug, and will be fix in the
+		* next sai version.
+		*/
+		if (!sai->is_consumer_mode[tx]) {
+			/* Software Reset */
+			regmap_write(sai->regmap, FSL_SAI_xCSR(tx, ofs), FSL_SAI_CSR_SR);
+			/* Clear SR bit to finish the reset */
+			regmap_write(sai->regmap, FSL_SAI_xCSR(tx, ofs), 0);
+		}
 	}
-#endif
 }
 
 static int fsl_sai_trigger(struct snd_pcm_substream *substream, int cmd,
@@ -962,11 +948,9 @@ static int fsl_sai_dai_probe(struct snd_soc_dai *cpu_dai)
 	unsigned int ofs = sai->soc_data->reg_offset;
 
 	/* Software Reset for both Tx and Rx */
-	regmap_write(sai->regmap, FSL_SAI_TCSR(ofs), FSL_SAI_CSR_SR);
-	regmap_write(sai->regmap, FSL_SAI_RCSR(ofs), FSL_SAI_CSR_SR);
-	/* Clear SR bit to finish the reset */
-	regmap_write(sai->regmap, FSL_SAI_TCSR(ofs), 0);
-	regmap_write(sai->regmap, FSL_SAI_RCSR(ofs), 0);
+	if (!(sai->mclk_direction_output && sai->soc_data->mclk_with_tere)) {
+		fsl_sai_reset(sai);
+	}
 
 	regmap_update_bits(sai->regmap, FSL_SAI_TCR1(ofs),
 			   FSL_SAI_CR1_RFW_MASK(sai->soc_data->fifo_depth),
@@ -1414,7 +1398,6 @@ static int fsl_sai_probe(struct platform_device *pdev)
 	if (!sai)
 		return -ENOMEM;
 
-	sai->mclk_id_set = -1;
 	sai->pdev = pdev;
 	sai->soc_data = of_device_get_match_data(dev);
 
@@ -1447,7 +1430,6 @@ static int fsl_sai_probe(struct platform_device *pdev)
 		/* -EPROBE_DEFER */
 		return PTR_ERR(sai->bus_clk);
 	}
-
 
 	for (i = 1; i < FSL_SAI_MCLK_MAX; i++) {
 		sprintf(tmp, "mclk%d", i);
@@ -1490,8 +1472,10 @@ static int fsl_sai_probe(struct platform_device *pdev)
 
 	/* Use Multi FIFO mode depending on the support from SDMA script */
 	ret = of_property_read_u32_array(np, "dmas", dmas, 4);
-	if (!sai->soc_data->use_edma && !ret && dmas[2] == IMX_DMATYPE_MULTI_SAI)
+	if (!sai->soc_data->use_edma && !ret && dmas[2] == IMX_DMATYPE_MULTI_SAI) {
 		sai->is_multi_fifo_dma = true;
+		dev_dbg(dev, "SAI is multi-fifo\n");
+	}
 
 	/* read dataline mask for rx and tx*/
 	ret = fsl_sai_read_dlcfg(sai);
@@ -1574,16 +1558,16 @@ static int fsl_sai_probe(struct platform_device *pdev)
 	sai->pinctrl = devm_pinctrl_get(&pdev->dev);
 
 	platform_set_drvdata(pdev, sai);
-	pm_runtime_enable(&pdev->dev);
-	pm_runtime_get_sync(&pdev->dev);
 	/* Get sai version */
 	ret = fsl_sai_check_version(dev);
 	if (ret < 0)
 		dev_warn(dev, "Error reading SAI version: %d\n", ret);
 
-	/* Provide the MCLK output */
+	/* Select MCLK direction */
 	if (sai->mclk_direction_output &&
 	    sai->soc_data->max_register >= FSL_SAI_MCTL) {
+		regmap_update_bits(sai->regmap, FSL_SAI_MCTL,
+				FSL_SAI_MCTL_MCLK_EN, FSL_SAI_MCTL_MCLK_EN);
 		const struct clk_hw *hwp[1];
 		const char *clk_name = np->name;
 		struct clk_init_data mclk_init = {
@@ -1606,7 +1590,6 @@ static int fsl_sai_probe(struct platform_device *pdev)
 				   FSL_SAI_TCSR(sai->soc_data->reg_offset),
 				   FSL_SAI_CSR_TERE, FSL_SAI_CSR_TERE);
 		mclk_init.name = clk_name;
-		sai->is_mclk_provider = true;
 		sai->sai_mclk_out.hw.init = &mclk_init;
 		ret = devm_clk_hw_register(&pdev->dev, &sai->sai_mclk_out.hw);
 		if (ret < 0) {
@@ -1662,23 +1645,31 @@ static int fsl_sai_probe(struct platform_device *pdev)
 					      &sai->cpu_dai_drv, 1);
 	if (ret)
 		goto err_component_register;
-	pm_runtime_put_sync(&pdev->dev);
-	return ret;
+	
+	fsl_sai_runtime_resume(&pdev->dev);
+	pm_runtime_enable(&pdev->dev);
+	return 0;
 
 err_component_register:
 	if (sai->verid.feature & FSL_SAI_VERID_TSTMP_EN)
-		sysfs_remove_group(&pdev->dev.kobj,
-				   fsl_sai_get_dev_attribute_group(sai->monitor_spdif));
-	pm_runtime_put_sync(&pdev->dev);
-	pm_runtime_disable(&pdev->dev);
+		sysfs_remove_group(
+			&pdev->dev.kobj,
+			fsl_sai_get_dev_attribute_group(sai->monitor_spdif));
 	return ret;
 }
 
 static void fsl_sai_remove(struct platform_device *pdev)
 {
 	struct fsl_sai *sai = dev_get_drvdata(&pdev->dev);
+
+	pm_runtime_disable(&pdev->dev);
+	if (!pm_runtime_status_suspended(&pdev->dev))
+		fsl_sai_runtime_suspend(&pdev->dev);
+
 	if (sai->verid.feature & FSL_SAI_VERID_TSTMP_EN)
-		sysfs_remove_group(&pdev->dev.kobj,  fsl_sai_get_dev_attribute_group(sai->monitor_spdif));
+		sysfs_remove_group(
+			&pdev->dev.kobj,
+			fsl_sai_get_dev_attribute_group(sai->monitor_spdif));
 }
 
 static const struct fsl_sai_soc_data fsl_sai_vf610_data = {
@@ -1825,8 +1816,6 @@ MODULE_DEVICE_TABLE(of, fsl_sai_ids);
 static int fsl_sai_runtime_suspend(struct device *dev)
 {
 	struct fsl_sai *sai = dev_get_drvdata(dev);
-
-	dev_dbg(dev, "%s\n", __func__);
 	release_bus_freq(BUS_FREQ_AUDIO);
 
 	if (sai->mclk_streams & BIT(SNDRV_PCM_STREAM_CAPTURE))
@@ -1851,7 +1840,6 @@ static int fsl_sai_runtime_resume(struct device *dev)
 	unsigned int ofs = sai->soc_data->reg_offset;
 	int ret;
 
-	dev_dbg(dev, "%s\n", __func__);
 	ret = clk_prepare_enable(sai->bus_clk);
 	if (ret) {
 		dev_err(dev, "failed to enable bus clock: %d\n", ret);
@@ -1877,9 +1865,9 @@ static int fsl_sai_runtime_resume(struct device *dev)
 
 	regcache_cache_only(sai->regmap, false);
 	regcache_mark_dirty(sai->regmap);
-
-	if (!sai->is_mclk_provider)
+	if (!(sai->mclk_direction_output && sai->soc_data->mclk_with_tere)) {
 		fsl_sai_reset(sai);
+	}
 	ret = regcache_sync(sai->regmap);
 	if (ret)
 		goto disable_rx_clk;

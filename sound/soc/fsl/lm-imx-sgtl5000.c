@@ -8,13 +8,12 @@
  * http://www.opensource.org/licenses/gpl-license.html
  * http://www.gnu.org/copyleft/gpl.html
  */
-#define DEBUG
 #include <linux/module.h>
 #include <linux/of_platform.h>
 #include <linux/i2c.h>
-#include <linux/of_gpio.h>
 #include <linux/slab.h>
 #include <linux/gpio.h>
+#include <linux/gpio/consumer.h>
 #include <linux/clk.h>
 #include <linux/delay.h>
 #include <sound/soc.h>
@@ -41,9 +40,7 @@ struct board_variant {
 
 struct card_options {
 	struct gpio_desc *hp_gpio;
-	int hp_active_level;
 	struct gpio_desc *mic_gpio;
-	int mic_active_level;
 	struct snd_soc_jack headphone_jack;
 	struct snd_soc_jack mic_jack;
 	bool mic_attr;
@@ -285,9 +282,7 @@ static int imx_sp2_hpjack_status_check(void *priv)
 		return 0;
 	hp_status = gpiod_get_value(data->options.hp_gpio);
 
-	dev_dbg(&data->pdev->dev, "%s: hpdet = %d (%d)\n", __func__, hp_status,
-		data->options.hp_active_level);
-	if(hp_status == 1) {
+	if(hp_status) {
 		ret = SND_JACK_HEADPHONE;
 		data->hp_connected = true;
 	} else {
@@ -305,7 +300,7 @@ static int imx_sp2_micjack_status_check(void *priv)
 		return 0;
 
 	mic_status = gpiod_get_value(data->options.mic_gpio);
-	if (mic_status == 1) {
+	if (mic_status) {
 		data->mic_connected = true;
 		ret = SND_JACK_MICROPHONE;
 	} else {
@@ -331,7 +326,7 @@ static int imx_sp2_audio_jack_init(struct imx_sp2_audio_data *data)
 		imx_hp_jack_gpio[0].data = data;
 		imx_hp_jack_gpio[0].desc = data->options.hp_gpio;
 		imx_hp_jack_gpio[0].jack_status_check = imx_sp2_hpjack_status_check;
-		imx_hp_jack_gpio[0].invert = data->options.hp_active_level;
+		imx_hp_jack_gpio[0].invert = 0;
 		ret = snd_soc_card_jack_new_pins(&data->card, "Headphone Jack",
 					    SND_JACK_HEADPHONE,
 					    &data->options.headphone_jack,
@@ -342,6 +337,7 @@ static int imx_sp2_audio_jack_init(struct imx_sp2_audio_data *data)
 		data->options.hp_attr = true;
 		data->options.mic_attr = true;
 	} else if (data->board_info->iphone_jack) {
+		dev_dbg(&data->pdev->dev, "Using headset jack\n");
 		ret = snd_soc_card_jack_new_pins(&data->card, "Headphone Jack",
 					    SND_JACK_HEADSET,
 					    &data->options.headphone_jack,
@@ -356,7 +352,7 @@ static int imx_sp2_audio_jack_init(struct imx_sp2_audio_data *data)
 		imx_mic_jack_gpio[0].data = data;
 		imx_mic_jack_gpio[0].desc = data->options.mic_gpio;
 		imx_mic_jack_gpio[0].jack_status_check = imx_sp2_micjack_status_check;
-		imx_mic_jack_gpio[0].invert = data->options.mic_active_level;
+		imx_mic_jack_gpio[0].invert = 0;
 
 		snd_soc_card_jack_new_pins(&data->card, "AMIC", SND_JACK_MICROPHONE,
 				      &data->options.mic_jack,
@@ -418,7 +414,9 @@ static int imx_sp2_audio_dai_init(struct snd_soc_pcm_runtime *rtd)
 static int imx_sp2_audio_hw_params(struct snd_pcm_substream *substream,
 				struct snd_pcm_hw_params *params)
 {
-	/* struct snd_soc_pcm_runtime *rtd = asoc_substream_to_rtd(substream); */
+	struct snd_soc_pcm_runtime *rtd = asoc_substream_to_rtd(substream);
+	struct imx_sp2_audio_data *data = snd_soc_card_get_drvdata(rtd->card);
+	dev_dbg(rtd->card->dev, "Rate is %d\n", params_rate(params));
 	return 0;
 }
 
@@ -498,16 +496,12 @@ static int imx_sp2_audio_probe(struct platform_device *pdev)
 	data->options.hp_gpio = devm_gpiod_get(&pdev->dev, "hp-det", GPIOD_IN);
 	if (IS_ERR(data->options.hp_gpio)) {
 		dev_err(&pdev->dev, "%s: Failed to get 'hp-det-gpios' gpio", __func__);
-    } else { 
-        data->options.hp_active_level = gpiod_is_active_low(data->options.hp_gpio);
-    }
+	}
 
 	data->options.mic_gpio = devm_gpiod_get(&pdev->dev, "mic-det", GPIOD_IN);
 	if (IS_ERR(data->options.mic_gpio)) {
 		dev_err(&pdev->dev, "%s: Failed to get 'mic-det-gpios' gpio", __func__);
-    } else {
-        data->options.mic_active_level = gpiod_is_active_low(data->options.mic_gpio);
-    }
+	}
 
 	INIT_DELAYED_WORK(&data->mic_work, imx_sp2_audio_read_bias_work);
 	data->dai.cpus = &data->comp[0];
@@ -551,15 +545,14 @@ static int imx_sp2_audio_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, &data->card);
 	snd_soc_card_set_drvdata(&data->card, data);
 
-	data->iioc = iio_channel_get(&pdev->dev, "miccurrent");
-	if (IS_ERR_OR_NULL(data->iioc)) {
-		if (PTR_ERR(data->iioc) == -EPROBE_DEFER) {
-			dev_err_probe(&pdev->dev, -EPROBE_DEFER,
-				      "Wait on IIO\n");
-			ret = -EPROBE_DEFER;
+	if (device_property_present(&pdev->dev, "io-channel-names")) {
+		const char *name;
+		ret = device_property_read_string(&pdev->dev, "io-channel-names", &name);
+		data->iioc = devm_iio_channel_get(&pdev->dev, name);
+		if (IS_ERR_OR_NULL(data->iioc)) {
+			ret = PTR_ERR(data->iioc);
+			dev_err_probe(&pdev->dev, ret, "Wait on IIO\n");
 			goto cleanup;
-		} else {
-			data->iioc = NULL;
 		}
 	}
 	ret = snd_soc_of_parse_audio_routing(&data->card, "audio-routing");
@@ -576,6 +569,7 @@ static int imx_sp2_audio_probe(struct platform_device *pdev)
 		queue_delayed_work(system_power_efficient_wq, &data->mic_work,
 				   msecs_to_jiffies(500));
 	}
+	return 0;
 cleanup:
 	if (cpu_pdev)
 		put_device(&cpu_pdev->dev);

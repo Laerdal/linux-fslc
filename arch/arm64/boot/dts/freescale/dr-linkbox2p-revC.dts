@@ -168,8 +168,6 @@
 			"Headphone Jack", "HP_OUT",
 			"AMIC", "Mic Bias",
 			"MIC_IN", "AMIC";
-		frame-master;
-		bitclock-master;
 	};
 
 	leds {
@@ -479,6 +477,7 @@
 	sgtl5000: audio-codec@a {
 		compatible = "fsl,sgtl5000";
 		clocks = <&sai3>;
+		clock-names = "mclk";
 		#sound-dai-cells = <0>;
 		reg = <0x0a>;
 		VDDD-supply = <&pmic_1v8>;

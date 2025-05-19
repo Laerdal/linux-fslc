@@ -12,9 +12,7 @@
 #include <linux/module.h>
 #include <linux/of_platform.h>
 #include <linux/i2c.h>
-#include <linux/of_gpio.h>
 #include <linux/slab.h>
-#include <linux/gpio.h>
 #include <linux/clk.h>
 #include <linux/power_supply.h>
 #include <sound/soc.h>
@@ -23,6 +21,8 @@
 #include <sound/pcm_params.h>
 #include <sound/soc-dapm.h>
 #include <linux/pinctrl/consumer.h>
+#include <linux/gpio.h>
+#include <linux/gpio/consumer.h>
 #include "fsl_esai.h"
 #include "fsl_sai.h"
 
@@ -37,9 +37,6 @@ struct board_variant {
 const struct board_variant imx6_pcm1681 = { .cpu_type = CPUTYPE_IMX6 };
 const struct board_variant imx8_pcm1681 = { .cpu_type = CPUTYPE_IMX8 };
 
-struct pcm_gpio_info {
-	struct gpio_desc *gpio_nr;
-};
 
 struct imx_pcm1681_data {
 	struct snd_soc_dai_link dai;
@@ -47,10 +44,7 @@ struct imx_pcm1681_data {
 	struct snd_soc_dai_link_component comp[3];
 	char codec_dai_name[DAI_NAME_SIZE];
 	char platform_name[DAI_NAME_SIZE];
-	struct pcm_gpio_info shutdown_gpios[2];
-	int num_shutdown_gpios;
-	struct power_supply *power[2];
-	int nr_power;
+	struct gpio_descs *shutdown_gpios;
 	const struct board_variant *board_info;
 	unsigned int clk_frequency;
 };
@@ -78,8 +72,7 @@ static const struct snd_soc_dapm_route audio_map_1681[] = {
 
 };
 
-static int imx_pcm1681_hw_param(struct snd_pcm_substream *substream,
-				     struct snd_pcm_hw_params *params)
+static int imx_pcm1681_hw_param(struct snd_pcm_substream *substream, struct snd_pcm_hw_params *params)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_soc_dai *codec_dai = asoc_rtd_to_codec(rtd, 0);
@@ -88,26 +81,11 @@ static int imx_pcm1681_hw_param(struct snd_pcm_substream *substream,
 	unsigned ch = params_channels(params);
 	snd_pcm_format_t sample_format = params_format(params);
 	int ret = 0;
-	int slotw=32;
+	int slotw = 32;
 	u32 width = snd_pcm_format_width(params_format(params));
-	unsigned int clock_freq=0;
-	u32 codec_dai_format = SND_SOC_DAIFMT_LEFT_J | SND_SOC_DAIFMT_NB_NF | SND_SOC_DAIFMT_CBS_CFS;
-
-	ret = snd_soc_dai_set_fmt(codec_dai, codec_dai_format);
-	if (ret) {
-		dev_err(rtd->dev, "failed to set codec dai fmt: %d\n", ret);
-		return ret;
-	}
-	ret = snd_soc_dai_set_fmt(cpu_dai, codec_dai_format);
-	if (ret) {
-		dev_err(rtd->dev, "failed to set cpu dai fmt: %d\n", ret);
-		return ret;
-	}
-
+	unsigned int clock_freq = 0;
 	switch (ch) {
 	case 2:
-	case 4:
-	case 6:
 		switch (sample_format) {
 		case SNDRV_PCM_FORMAT_S16_LE:
 			clock_freq = sample_rate * 32;
@@ -121,48 +99,48 @@ static int imx_pcm1681_hw_param(struct snd_pcm_substream *substream,
 			return -EINVAL;
 			break;
 		}
-
+		snd_soc_dai_set_tdm_slot(cpu_dai, 0, 0, 0, 0);
+		snd_soc_dai_set_tdm_slot(codec_dai, 0, 0, 0, 0);
 		break;
 	case 8:
 		if (width >= 24) {
 			clock_freq = sample_rate * 256;
-		}
-		else {
-			dev_err(rtd->dev, "%s: only S24_LE and S32_LE supported for TDM, was %d\n", __func__, sample_format);
+		} else {
+			dev_err(rtd->dev, "%s: only S24_LE and S32_LE supported for TDM, was %d\n", __func__,
+				sample_format);
 			return -EINVAL;
+		}
+		ret = snd_soc_dai_set_tdm_slot(cpu_dai, (1 << ch) - 1, 0x0, ch, slotw);
+		if (ret) {
+			dev_err(rtd->dev, "%s: failed to set cpu tdm fmt: %d\n", __func__, ret);
+			return ret;
+		}
+
+		ret = snd_soc_dai_set_tdm_slot(codec_dai, (1 << ch) - 1, 0x0, ch, slotw);
+		if (ret) {
+			dev_err(rtd->dev, "%s: failed to set codec tdm fmt: %d\n", __func__, ret);
+			return ret;
 		}
 		break;
 	default:
 
-		dev_err(rtd->dev, "%s: 2,4,6,8 channels must be used\n", __func__);
+		dev_err(rtd->dev, "%s: 2 or 8 channels must be used\n", __func__);
 		return -EINVAL;
 		break;
 	}
 
-	dev_dbg(rtd->dev, "%s: SAI clock is %d\n", __func__, clock_freq);
-	ret = snd_soc_dai_set_tdm_slot(cpu_dai, (1 << ch)-1, 0x0, ch, slotw);
-	if (ret) {
-		dev_err(rtd->dev, "%s: failed to set cpu tdm fmt: %d\n", __func__, ret);
-		return ret;
-	}
-
-	ret = snd_soc_dai_set_tdm_slot(codec_dai, (1 << ch)-1, 0x0, ch, slotw);
-	if (ret) {
-		dev_err(rtd->dev, "%s: failed to set codec tdm fmt: %d\n", __func__, ret);
-		return ret;
-	}
+	dev_dbg(rtd->dev, "%s: SAI clock is %d, rate is %d\n", __func__, clock_freq, sample_rate);
 
 	return 0;
 }
 
-
-
 static void imx_pcm1681_set_amps(struct imx_pcm1681_data *priv, bool off)
 {
 	int n;
-	dev_dbg(priv->card.dev, "%s off = %d\n", __func__, off);
-	for (n=0; n < priv->num_shutdown_gpios; n++) {
-		gpiod_set_value(priv->shutdown_gpios[n].gpio_nr, 1);
+	if (priv->shutdown_gpios) {
+		for (n=0; n < priv->shutdown_gpios->ndescs; n++) {
+				gpiod_set_value(priv->shutdown_gpios->desc[n], off ? 1 : 0 );
+		}
 	}
 }
 
@@ -239,9 +217,6 @@ static int imx_pcm1681_probe(struct platform_device *pdev)
 	struct imx_pcm1681_data *data;
 	struct clk *codec_clk;
 	int ret;
-	int n, sd_gpios;
-	int nr_supplies;
-	const char *supply_name;
 	const struct of_device_id *of_id = of_match_device(imx_pcm1681_dt_ids, &pdev->dev);
 	const struct board_variant *board_info = of_id ? (struct board_variant*)of_id->data : NULL;
 	if (!board_info) {
@@ -291,20 +266,7 @@ static int imx_pcm1681_probe(struct platform_device *pdev)
 	clk_put(codec_clk);
 	dev_info(&pdev->dev, "%s: PLL (HFTXC) = %d\n", __func__, data->clk_frequency);
 
-	struct gpio_desc *gpiod;
-	sd_gpios = gpiod_count(&pdev->dev, "amp-shutdown");
-	if (sd_gpios > 2)
-		sd_gpios = 2;
-	for (n=0; n < sd_gpios; n++) {
-		gpiod = gpiod_get_index(&pdev->dev, "amp-shutdown", n, GPIOD_OUT_HIGH);
-		if (IS_ERR(gpiod)) {
-			dev_warn(&pdev->dev, "%s: Bad DT for amp-shutdown-gpios[%d]\n", __func__, n);
-        } else {
-            dev_info(&pdev->dev, "%s: Using gpio amp-shutdown-gpios[%d] with flag GPIOD_OUT_HIGH\n", __func__, n);
-            data->shutdown_gpios[n].gpio_nr = gpiod;
-            data->num_shutdown_gpios++;
-		}
-	}
+	data->shutdown_gpios = devm_gpiod_get_array_optional(&pdev->dev, "amp-shutdown-gpios", GPIOD_OUT_HIGH);
 	data->dai.name = "HiFi";
 	data->dai.stream_name = "HiFi";
 	data->dai.num_cpus	= 1;
@@ -329,11 +291,11 @@ static int imx_pcm1681_probe(struct platform_device *pdev)
 	ret = snd_soc_of_parse_card_name(&data->card, "model");
 	if (ret) {
 		dev_err(&pdev->dev, "DT must supply model attribute");
-		goto clean_gpio;
+		goto cleanup;
 	}
 	ret = snd_soc_of_parse_audio_routing(&data->card, "audio-routing");
 	if (ret)
-		goto clean_gpio;
+		goto cleanup;
 	data->card.num_links = 1;
 	data->card.dai_link = &data->dai;
 	data->card.dapm_widgets = imx_pcm1681_dapm_widgets;
@@ -343,35 +305,11 @@ static int imx_pcm1681_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, &data->card);
 	snd_soc_card_set_drvdata(&data->card, data);
 
-	/* Power supplies */
-	nr_supplies = of_property_count_strings(pdev->dev.of_node, "extra-supply");
-	if ( nr_supplies > 0) {
-		dev_info(&pdev->dev, "Found %d power supplies (MAX is 2)\n", nr_supplies);
-		if (nr_supplies > 2)
-			nr_supplies = 2;
-		data->nr_power = nr_supplies;
-		for (nr_supplies=0; nr_supplies < data->nr_power; nr_supplies++) {
-			ret = of_property_read_string_index(pdev->dev.of_node, "extra-supply", nr_supplies, &supply_name);
-			if (ret == 0) {
-				data->power[nr_supplies] = power_supply_get_by_name(supply_name);
-				if (data->power[nr_supplies] == NULL)
-					dev_err(&pdev->dev, "Unable to get power %s\n", supply_name);
-			}
-		}
-	}
-	ret = snd_soc_register_card(&data->card);
+	ret = devm_snd_soc_register_card(&pdev->dev, &data->card);
 	if (ret) {
-		if (ret != -EPROBE_DEFER)
-			dev_err(&pdev->dev, "snd_soc_register_card failed (%d)\n", ret);
-		goto clean_gpio;
+		dev_err_probe(&pdev->dev, ret, "snd_soc_register_card failed (%d)\n", ret);
 	}
-	goto cleanup;
 
-clean_gpio:
-	for (n=0; n < data->num_shutdown_gpios; n++) {
-		if (!IS_ERR(data->shutdown_gpios[n].gpio_nr))
-			gpiod_put(data->shutdown_gpios[n].gpio_nr);
-	}
 cleanup:
 	if (cpu_pdev)
 		put_device(&cpu_pdev->dev);
@@ -387,14 +325,6 @@ cleanup:
 
 static int imx_pcm1681_remove(struct platform_device *pdev)
 {
-	struct snd_soc_card *card = platform_get_drvdata(pdev);
-	struct imx_pcm1681_data *data = snd_soc_card_get_drvdata(card);
-	if (data->power[0])
-		power_supply_put(data->power[0]);
-	if (data->power[1])
-		power_supply_put(data->power[1]);
-	snd_soc_unregister_card(card);
-
 	return 0;
 }
 
