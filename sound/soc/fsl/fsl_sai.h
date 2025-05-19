@@ -316,8 +316,6 @@ struct fsl_sai {
 	unsigned int slots;
 	unsigned int slot_width;
 	unsigned int bclk_ratio;
-	int mclk_id_set;
-	bool is_mclk_provider;
 
 	const struct fsl_sai_soc_data *soc_data;
 	struct snd_soc_dai_driver cpu_dai_drv;
