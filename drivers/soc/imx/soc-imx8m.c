@@ -288,8 +288,7 @@ static int imx8m_soc_probe(struct platform_device *pdev)
 		soc_dev_attr->serial_number = devm_kasprintf(dev, GFP_KERNEL, "%016llX", soc_uid);
 	}
 	if (!soc_dev_attr->serial_number) {
-		ret = -ENOMEM;
-		goto free_rev;
+		return -ENOMEM;
 	}
 
 	soc_dev = soc_device_register(soc_dev_attr);
