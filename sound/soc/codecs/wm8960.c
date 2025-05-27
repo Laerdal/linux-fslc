@@ -800,16 +800,17 @@ static int wm8960_configure_clocking(struct snd_soc_component *component)
 		if (ret >= 0) {
 			goto configure_clock;
 		} else if (wm8960->clk_id != WM8960_SYSCLK_AUTO) {
-			dev_err(component->dev, "failed to configure clock\n");
+			dev_err(component->dev, "failed to configure clock, %d\n", freq_out);
 			return -EINVAL;
 		}
 	}
 
 	freq_out = wm8960_configure_pll(component, freq_in, &i, &j, &k);
 	if (freq_out < 0) {
-		dev_err(component->dev, "failed to configure clock via PLL\n");
+		dev_warn(component->dev, "failed to configure clock via PLL, freq in: %d\n", freq_in);
 		return freq_out;
 	}
+	dev_info(component->dev, "Configure clock via PLL, freq in: %d, freq out: %d\n", freq_in, freq_out);
 	wm8960_set_pll(component, freq_in, freq_out);
 
 configure_clock:

@@ -321,7 +321,7 @@ static const struct snd_soc_dapm_widget cpum_dapm_widgets[] = {
 
 static int imx_wm8960_jack_init(struct imx_wm8960_data *data)
 {
-	int ret;
+	int ret = 0;;
 	if (!IS_ERR(data->options.hp_gpio)) {
 		imx_hp_jack_gpio[0].data = data;
 		imx_hp_jack_gpio[0].desc = data->options.hp_gpio;
@@ -332,6 +332,10 @@ static int imx_wm8960_jack_init(struct imx_wm8960_data *data)
 						 &data->options.headphone_jack,
 						 imx_hp_jack_pins,
 						 ARRAY_SIZE(imx_hp_jack_pins));
+		if (ret) {
+			dev_err(&data->pdev->dev, "Headphone Jack create failed (%d)\n", ret);
+			return ret;
+		}
 		snd_soc_jack_add_gpios(&data->options.headphone_jack, 1, imx_hp_jack_gpio);
 	}
 	if (!IS_ERR(data->options.mic_gpio)) {
@@ -345,12 +349,17 @@ static int imx_wm8960_jack_init(struct imx_wm8960_data *data)
 						 &data->options.mic_jack,
 						 imx_mic_jack_pins,
 						 ARRAY_SIZE(imx_mic_jack_pins));
+		if (ret) {
+			dev_err(&data->pdev->dev, "AMIC create failed (%d)\n", ret);
+			return ret;
+		}
 		snd_soc_jack_add_gpios(&data->options.mic_jack, 1, imx_mic_jack_gpio);
 	}
 	if (!IS_ERR(data->options.hp_gpio)) {
 		ret = device_create_file(&data->pdev->dev, &dev_attr_headphone);
 		if (ret) {
 			dev_err(&data->pdev->dev, "create hp attr failed (%d)\n", ret);
+			return ret;
 		}
 		data->options.hp_attr = true;
 	}
@@ -359,10 +368,11 @@ static int imx_wm8960_jack_init(struct imx_wm8960_data *data)
 		ret = device_create_file(&data->pdev->dev, &dev_attr_microphone);
 		if (ret) {
 			dev_err(&data->pdev->dev, "create mic attr failed (%d)\n", ret);
+			return ret;
 		}
 		data->options.mic_attr = true;
 	}
-	return 0;
+	return ret;
 }
 
 static int imx_wm8960_late_probe(struct snd_soc_card *card)
@@ -373,34 +383,44 @@ static int imx_wm8960_late_probe(struct snd_soc_card *card)
 		&card->rtd_list, struct snd_soc_pcm_runtime, list);
 	struct snd_soc_dai *codec_dai = asoc_rtd_to_codec(rtd, 0);
 
-	ret = clk_prepare_enable(data->codec_clk);
-	if (ret) {
-		dev_err(data->card.dev, "Failed to enable MCLK: %d\n", ret);
-		return ret;
-	}
-
 	if (data->board_info->cpu_type == CPUTYPE_IMX6) {
+		dev_info(&data->pdev->dev, "%s: codec clock is %d\n", __func__, data->clk_frequency);
 		ret = snd_soc_dai_set_sysclk(codec_dai, WM8960_SYSCLK_PLL,
 					     data->clk_frequency,
 					     SND_SOC_CLOCK_IN);
-		if (ret) {
+		if (ret < 0) {
 			dev_err(&data->pdev->dev,
 				"failed to set codec sysclk: %d\n", ret);
 			return ret;
 		}
 	}
+
 	ret = imx_wm8960_jack_init(data);
-	if (ret < 0)
-		return ret;
+	if (ret < 0) {
+		dev_err(&data->pdev->dev,
+			"failed to init jack: %d\n", ret);
+	}
+
 	/* Use 0.9 factor on MIC BIAS voltage */
 	snd_soc_component_update_bits(codec_dai->component, WM8960_ADDCTL4, 0x1,
 				      0x0);
 	/* Use MONO mixer */
 	snd_soc_component_update_bits(codec_dai->component, WM8960_ADDCTL1,
 				      0x10, 0x10);
-	clk_disable_unprepare(data->codec_clk);
+
+	return ret;
+}
+
+static int imx_wm896x_hw_params(struct snd_pcm_substream *substream,
+				struct snd_pcm_hw_params *params)
+{
+	/* struct snd_soc_pcm_runtime *rtd = asoc_substream_to_rtd(substream); */
 	return 0;
 }
+
+static const struct snd_soc_ops imx_wm896x_card_ops = {
+	.hw_params = imx_wm896x_hw_params,
+};
 
 static const struct of_device_id imx_wm8960_dt_ids[] = {
 	{ .compatible = "fsl,lm-imx-audio-wm8960", .data = &imx6_wm8960},
@@ -539,6 +559,8 @@ static int imx_wm8960_probe(struct platform_device *pdev)
 	data->dai.codecs->of_node = codec_np;
 	data->dai.cpus->of_node = cpu_np;
 	data->dai.platforms->of_node = cpu_np;
+	data->dai.ops = &imx_wm896x_card_ops;
+
 	if (board_info->cpu_type == CPUTYPE_IMX6)	/* 8960 is master*/
 		data->dai.dai_fmt = SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF | SND_SOC_DAIFMT_CBP_CFP;
 	else
@@ -573,10 +595,17 @@ static int imx_wm8960_probe(struct platform_device *pdev)
 
 	ret = devm_snd_soc_register_card(&pdev->dev, &data->card);
 	if (ret) {
-		if (ret != -EPROBE_DEFER)
-			dev_err(&pdev->dev, "snd_soc_register_card failed (%d)\n", ret);
-		goto cleanup;
+		dev_err_probe(&pdev->dev, ret, "snd_soc_register_card failed\n");
+		goto put_device;
 	}
+
+	goto cleanup;
+
+put_device:
+	put_device(&pdev->dev);
+fail:
+	if (data && !IS_ERR(data->codec_clk))
+		clk_put(data->codec_clk);
 
 cleanup:
 	if (cpu_np)
