@@ -52,6 +52,10 @@
 		status = "disabled";
 	};
 
+	capture-subsystem {
+		status = "disabled";
+	};
+
 	regulators {
 		compatible = "simple-bus";
 
@@ -1127,4 +1131,39 @@
 
 &snvs_poweroff {
 	status = "okay";
+};
+
+&vpu {
+	status = "disabled";
+};
+
+&vpu_fsl {
+	status = "disabled";
+};
+&gpu {
+	status = "disabled";
+};
+
+&gpu_3d {
+	status = "disabled";
+};
+
+&gpu_2d {
+	status = "disabled";
+};
+
+&hdmi {
+	status = "disabled";
+};
+
+&hdmi_core {
+	status = "disabled";
+};
+
+&hdmi_video {
+	status = "disabled";
+};
+
+&hdmi_cec {
+	status = "disabled";
 };
