@@ -214,13 +214,8 @@ struct imx_port {
 	const struct imx_uart_data *devdata;
 
 	struct mctrl_gpios *gpios;
-
-	/* shadow registers */
-	unsigned int ucr1;
-	unsigned int ucr2;
-	unsigned int ucr3;
-	unsigned int ucr4;
-	unsigned int ufcr;
+	/* counter to stop 0xff flood */
+	int idle_counter;
 
 	/* DMA fields */
 	unsigned int		dma_is_enabled:1;
@@ -280,59 +275,14 @@ static const struct of_device_id imx_uart_dt_ids[] = {
 };
 MODULE_DEVICE_TABLE(of, imx_uart_dt_ids);
 
-static void imx_uart_writel(struct imx_port *sport, u32 val, u32 offset)
+static inline void imx_uart_writel(struct imx_port *sport, u32 val, u32 offset)
 {
-	switch (offset) {
-	case UCR1:
-		sport->ucr1 = val;
-		break;
-	case UCR2:
-		sport->ucr2 = val;
-		break;
-	case UCR3:
-		sport->ucr3 = val;
-		break;
-	case UCR4:
-		sport->ucr4 = val;
-		break;
-	case UFCR:
-		sport->ufcr = val;
-		break;
-	default:
-		break;
-	}
 	writel(val, sport->port.membase + offset);
 }
 
-static u32 imx_uart_readl(struct imx_port *sport, u32 offset)
+static inline u32 imx_uart_readl(struct imx_port *sport, u32 offset)
 {
-	switch (offset) {
-	case UCR1:
-		return sport->ucr1;
-		break;
-	case UCR2:
-		/*
-		 * UCR2_SRST is the only bit in the cached registers that might
-		 * differ from the value that was last written. As it only
-		 * automatically becomes one after being cleared, reread
-		 * conditionally.
-		 */
-		if (!(sport->ucr2 & UCR2_SRST))
-			sport->ucr2 = readl(sport->port.membase + offset);
-		return sport->ucr2;
-		break;
-	case UCR3:
-		return sport->ucr3;
-		break;
-	case UCR4:
-		return sport->ucr4;
-		break;
-	case UFCR:
-		return sport->ufcr;
-		break;
-	default:
-		return readl(sport->port.membase + offset);
-	}
+	return readl(sport->port.membase + offset);
 }
 
 static inline unsigned imx_uart_uts_reg(struct imx_port *sport)
@@ -402,6 +352,40 @@ static void imx_uart_rts_inactive(struct imx_port *sport, u32 *ucr2)
 static void start_hrtimer_ms(struct hrtimer *hrt, unsigned long msec)
 {
        hrtimer_start(hrt, ms_to_ktime(msec), HRTIMER_MODE_REL);
+}
+/* called with port.lock taken and irqs off */
+static void imx_uart_soft_reset(struct imx_port *sport)
+{
+	int i = 10;
+	u32 ucr2, ubir, ubmr, uts;
+
+	/*
+	 * According to the Reference Manual description of the UART SRST bit:
+	 *
+	 * "Reset the transmit and receive state machines,
+	 * all FIFOs and register USR1, USR2, UBIR, UBMR, UBRC, URXD, UTXD
+	 * and UTS[6-3]".
+	 *
+	 * We don't need to restore the old values from USR1, USR2, URXD and
+	 * UTXD. UBRC is read only, so only save/restore the other three
+	 * registers.
+	 */
+	ubir = imx_uart_readl(sport, UBIR);
+	ubmr = imx_uart_readl(sport, UBMR);
+	uts = imx_uart_readl(sport, IMX21_UTS);
+
+	ucr2 = imx_uart_readl(sport, UCR2);
+	imx_uart_writel(sport, ucr2 & ~UCR2_SRST, UCR2);
+
+	while (!(imx_uart_readl(sport, UCR2) & UCR2_SRST) && (--i > 0))
+		udelay(1);
+
+	/* Restore the registers */
+	imx_uart_writel(sport, ubir, UBIR);
+	imx_uart_writel(sport, ubmr, UBMR);
+	imx_uart_writel(sport, uts, IMX21_UTS);
+
+	sport->idle_counter = 0;
 }
 
 static void imx_uart_disable_loopback_rs485(struct imx_port *sport)
@@ -816,6 +800,52 @@ static irqreturn_t imx_uart_rtsint(int irq, void *dev_id)
 	return ret;
 }
 
+/* Check if hardware Rx flood is in progress, and issue soft reset to stop it.
+ * This is to be called from Rx ISRs only when some bytes were actually
+ * received.
+ *
+ * A way to reproduce the flood (checked on iMX6SX) is: open iMX UART at 9600
+ * 8N1, and from external source send 0xf0 char at 115200 8N1. In about 90% of
+ * cases this starts a flood of "receiving" of 0xff characters by the iMX6 UART
+ * that is terminated by any activity on RxD line, or could be stopped by
+ * issuing soft reset to the UART (just stop/start of RX does not help). Note
+ * that what we do here is sending isolated start bit about 2.4 times shorter
+ * than it is to be on UART configured baud rate.
+ */
+static void imx_uart_check_flood(struct imx_port *sport, u32 usr2)
+{
+	/* To detect hardware 0xff flood we monitor RxD line between RX
+	 * interrupts to isolate "receiving" of char(s) with no activity
+	 * on RxD line, that'd never happen on actual data transfers.
+	 *
+	 * We use USR2_WAKE bit to check for activity on RxD line, but we have a
+	 * race here if we clear USR2_WAKE when receiving of a char is in
+	 * progress, so we might get RX interrupt later with USR2_WAKE bit
+	 * cleared. Note though that as we don't try to clear USR2_WAKE when we
+	 * detected no activity, this race may hide actual activity only once.
+	 *
+	 * Yet another case where receive interrupt may occur without RxD
+	 * activity is expiration of aging timer, so we consider this as well.
+	 *
+	 * We use 'idle_counter' to ensure that we got at least so many RX
+	 * interrupts without any detected activity on RxD line. 2 cases
+	 * described plus 1 to be on the safe side gives us a margin of 3,
+	 * below. In practice I was not able to produce a false positive to
+	 * induce soft reset at regular data transfers even using 1 as the
+	 * margin, so 3 is actually very strong.
+	 *
+	 * We count interrupts, not chars in 'idle-counter' for simplicity.
+	 */
+
+	if (usr2 & USR2_WAKE) {
+		imx_uart_writel(sport, USR2_WAKE, USR2);
+		sport->idle_counter = 0;
+	} else if (++sport->idle_counter > 3) {
+		dev_warn(sport->port.dev, "RX flood detected: soft reset.");
+		imx_uart_soft_reset(sport); /* also clears 'sport->idle_counter' */
+	}
+}
+
 static irqreturn_t imx_uart_txint(int irq, void *dev_id)
 {
 	struct imx_port *sport = dev_id;
@@ -829,30 +859,24 @@ static irqreturn_t imx_uart_txint(int irq, void *dev_id)
 static irqreturn_t __imx_uart_rxint(int irq, void *dev_id)
 {
 	struct imx_port *sport = dev_id;
-	unsigned int rx, flg, ignored = 0;
 	struct tty_port *port = &sport->port.state->port;
+	u32 usr2, rx;
 
-	while (imx_uart_readl(sport, USR2) & USR2_RDR) {
-		u32 usr2;
+	/* If we received something, check for 0xff flood */
+	usr2 = imx_uart_readl(sport, USR2);
+	if (usr2 & USR2_RDR)
+		imx_uart_check_flood(sport, usr2);
 
-		flg = TTY_NORMAL;
+	while ((rx = imx_uart_readl(sport, URXD0)) & URXD_CHARRDY) {
+		unsigned int flg = TTY_NORMAL;
 		sport->port.icount.rx++;
 
-		rx = imx_uart_readl(sport, URXD0);
-
-		usr2 = imx_uart_readl(sport, USR2);
-		if (usr2 & USR2_BRCD) {
-			imx_uart_writel(sport, USR2_BRCD, USR2);
-			if (uart_handle_break(&sport->port))
-				continue;
-		}
-
-		if (uart_handle_sysrq_char(&sport->port, (unsigned char)rx))
-			continue;
-
 		if (unlikely(rx & URXD_ERR)) {
-			if (rx & URXD_BRK)
+			if (rx & URXD_BRK) {
 				sport->port.icount.brk++;
+				if (uart_handle_break(&sport->port))
+					continue;
+			}
 			else if (rx & URXD_PRERR)
 				sport->port.icount.parity++;
 			else if (rx & URXD_FRMERR)
@@ -861,8 +885,6 @@ static irqreturn_t __imx_uart_rxint(int irq, void *dev_id)
 				sport->port.icount.overrun++;
 
 			if (rx & sport->port.ignore_status_mask) {
-				if (++ignored > 100)
-					goto out;
 				continue;
 			}
 
@@ -878,16 +900,17 @@ static irqreturn_t __imx_uart_rxint(int irq, void *dev_id)
 				flg = TTY_OVERRUN;
 
 			sport->port.sysrq = 0;
+		} else if (uart_handle_sysrq_char(&sport->port, (unsigned char)rx)) {
+			continue;
 		}
 
 		if (sport->port.ignore_status_mask & URXD_DUMMY_READ)
-			goto out;
+			continue;
 
 		if (tty_insert_flip_char(port, rx, flg) == 0)
 			sport->port.icount.buf_overrun++;
 	}
 
-out:
 	tty_flip_buffer_push(port);
 
 	return IRQ_HANDLED;
@@ -1172,36 +1195,44 @@ static void imx_uart_dma_rx_callback(void *data)
 	status = dmaengine_tx_status(chan, sport->rx_cookie, &state);
 
 	if (status == DMA_ERROR) {
+		spin_lock(&sport->port.lock);
 		imx_uart_clear_rx_errors(sport);
+		spin_unlock(&sport->port.lock);
 		return;
 	}
 
-	if (!(sport->port.ignore_status_mask & URXD_DUMMY_READ)) {
+	/*
+		* The state-residue variable represents the empty space
+		* relative to the entire buffer. Taking this in consideration
+		* the head is always calculated base on the buffer total
+		* length - DMA transaction residue. The UART script from the
+		* SDMA firmware will jump to the next buffer descriptor,
+		* once a DMA transaction if finalized (IMX53 RM - A.4.1.2.4).
+		* Taking this in consideration the tail is always at the
+		* beginning of the buffer descriptor that contains the head.
+		*/
 
-		/*
-		 * The state-residue variable represents the empty space
-		 * relative to the entire buffer. Taking this in consideration
-		 * the head is always calculated base on the buffer total
-		 * length - DMA transaction residue. The UART script from the
-		 * SDMA firmware will jump to the next buffer descriptor,
-		 * once a DMA transaction if finalized (IMX53 RM - A.4.1.2.4).
-		 * Taking this in consideration the tail is always at the
-		 * beginning of the buffer descriptor that contains the head.
-		 */
+	/* Calculate the head */
+	rx_ring->head = sg_dma_len(sgl) - state.residue;
 
-		/* Calculate the head */
-		rx_ring->head = sg_dma_len(sgl) - state.residue;
+	/* Calculate the tail. */
+	bd_size = sg_dma_len(sgl) / sport->rx_periods;
+	rx_ring->tail = ((rx_ring->head-1) / bd_size) * bd_size;
 
-		/* Calculate the tail. */
-		bd_size = sg_dma_len(sgl) / sport->rx_periods;
-		rx_ring->tail = ((rx_ring->head-1) / bd_size) * bd_size;
+	if (rx_ring->head <= sg_dma_len(sgl) &&
+		rx_ring->head > rx_ring->tail) {
 
-		if (rx_ring->head <= sg_dma_len(sgl) &&
-		    rx_ring->head > rx_ring->tail) {
+		/* Move data from tail to head */
+		r_bytes = rx_ring->head - rx_ring->tail;
 
-			/* Move data from tail to head */
-			r_bytes = rx_ring->head - rx_ring->tail;
+		/* If we received something, check for 0xff flood */
+		if (r_bytes > 0) {
+			spin_lock(&sport->port.lock);
+			imx_uart_check_flood(sport, imx_uart_readl(sport, USR2));
+			spin_unlock(&sport->port.lock);
+		}
 
+		if (!(sport->port.ignore_status_mask & URXD_DUMMY_READ)) {
 			/* CPU claims ownership of RX DMA buffer */
 			dma_sync_sg_for_cpu(sport->port.dev, sgl, 1,
 				DMA_FROM_DEVICE);
@@ -1217,10 +1248,10 @@ static void imx_uart_dma_rx_callback(void *data)
 				sport->port.icount.buf_overrun++;
 
 			sport->port.icount.rx += w_bytes;
-		} else	{
-			WARN_ON(rx_ring->head > sg_dma_len(sgl));
-			WARN_ON(rx_ring->head <= rx_ring->tail);
 		}
+	} else	{
+		WARN_ON(rx_ring->head > sg_dma_len(sgl));
+		WARN_ON(rx_ring->head <= rx_ring->tail);
 	}
 
 	if (w_bytes) {
@@ -1435,7 +1466,7 @@ static int imx_uart_startup(struct uart_port *port)
 {
 	struct imx_port *sport = (struct imx_port *)port;
 	struct tty_port *tty_port = &sport->port.state->port;
-	int retval, i;
+	int retval;
 	unsigned long flags;
 	int dma_is_inited = 0;
 	u32 ucr1, ucr2, ucr3, ucr4;
@@ -1470,19 +1501,14 @@ static int imx_uart_startup(struct uart_port *port)
 	imx_uart_writel(sport, ucr4 & ~UCR4_DREN, UCR4);
 
 	/* Can we enable the DMA support? */
-	if (!uart_console(port) && imx_uart_dma_init(sport) == 0)
+	if (!uart_console(port) && imx_uart_dma_init(sport) == 0) {
+		lockdep_set_subclass(&port->lock, 1);
 		dma_is_inited = 1;
+	}
 
 	spin_lock_irqsave(&sport->port.lock, flags);
 	/* Reset fifo's and state machines */
-	i = 100;
-
-	ucr2 = imx_uart_readl(sport, UCR2);
-	ucr2 &= ~UCR2_SRST;
-	imx_uart_writel(sport, ucr2, UCR2);
-
-	while (!(imx_uart_readl(sport, UCR2) & UCR2_SRST) && (--i > 0))
-		udelay(1);
+	imx_uart_soft_reset(sport);
 
 	/*
 	 * Finally, clear and enable interrupts
@@ -1635,9 +1661,6 @@ static void imx_uart_flush_buffer(struct uart_port *port)
 {
 	struct imx_port *sport = (struct imx_port *)port;
 	struct scatterlist *sgl = &sport->tx_sgl[0];
-	u32 ucr2;
-	int i = 100, ubir, ubmr, uts;
-
 	if (!sport->dma_chan_tx)
 		return;
 
@@ -1654,32 +1677,8 @@ static void imx_uart_flush_buffer(struct uart_port *port)
 		sport->dma_is_txing = 0;
 	}
 
-	/*
-	 * According to the Reference Manual description of the UART SRST bit:
-	 *
-	 * "Reset the transmit and receive state machines,
-	 * all FIFOs and register USR1, USR2, UBIR, UBMR, UBRC, URXD, UTXD
-	 * and UTS[6-3]".
-	 *
-	 * We don't need to restore the old values from USR1, USR2, URXD and
-	 * UTXD. UBRC is read only, so only save/restore the other three
-	 * registers.
-	 */
-	ubir = imx_uart_readl(sport, UBIR);
-	ubmr = imx_uart_readl(sport, UBMR);
-	uts = imx_uart_readl(sport, IMX21_UTS);
-
-	ucr2 = imx_uart_readl(sport, UCR2);
-	ucr2 &= ~UCR2_SRST;
-	imx_uart_writel(sport, ucr2, UCR2);
-
-	while (!(imx_uart_readl(sport, UCR2) & UCR2_SRST) && (--i > 0))
-		udelay(1);
-
-	/* Restore the registers */
-	imx_uart_writel(sport, ubir, UBIR);
-	imx_uart_writel(sport, ubmr, UBMR);
-	imx_uart_writel(sport, uts, IMX21_UTS);
+	/* Reset fifo's and state machines */
+	imx_uart_soft_reset(sport);
 }
 
 static void
@@ -2370,13 +2369,6 @@ static int imx_uart_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "failed to enable ipg clk: %d\n", ret);
 		return ret;
 	}
-
-	/* initialize shadow register values */
-	sport->ucr1 = readl(sport->port.membase + UCR1);
-	sport->ucr2 = readl(sport->port.membase + UCR2);
-	sport->ucr3 = readl(sport->port.membase + UCR3);
-	sport->ucr4 = readl(sport->port.membase + UCR4);
-	sport->ufcr = readl(sport->port.membase + UFCR);
 
 	ret = uart_get_rs485_mode(&sport->port);
 	if (ret)
