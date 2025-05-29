@@ -70,7 +70,8 @@ static int __init early_init_dt_alloc_reserved_memory_arch(unsigned long node,
 			memblock_free(base, size);
 	}
 
-	kmemleak_ignore_phys(base);
+	if (!err)
+		kmemleak_ignore_phys(base);
 
 	return err;
 }
