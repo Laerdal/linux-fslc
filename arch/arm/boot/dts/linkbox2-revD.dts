@@ -545,6 +545,9 @@
 		clocks = <&clks IMX6QDL_CLK_CKO>;
 		clock-names = "mclk";
 		wlf,shared-lrclk;
+		default-pll-lrclk = <48000>;
+		default-pll-bclk = <2304000>;
+		status = "okay";
 	   };
 
 };
@@ -602,19 +605,18 @@
 
 	};
 
-	codec_pcm1681: pcm1681@4c {
-		compatible = "ti,pcm1681";
-		clocks = <&si5351 0>;
-		clock-names = "mclk";
-		reg = <0x4c>;
-	};
-
 	main_rtc: rtc-m41t82@68 {
 		compatible = "ds,m41t82";
 		reg = <0x68>;
 		xtal-cap = /bits/ 8 <0xc8>;		/* Fix for HW bug, turn off capacitance */
 	};
 
+	codec_pcm1681: pcm1681@4c {
+		compatible = "ti,pcm1681";
+		clocks = <&si5351 0>;
+		clock-names = "mclk";
+		reg = <0x4c>;
+	};
 };
 
 
@@ -1112,7 +1114,7 @@
 			  <&clks IMX6QDL_CLK_ESAI_EXTAL>;
 	assigned-clock-parents = <&clks IMX6QDL_CLK_PLL4_POST_DIV>,
 				<&clks IMX6QDL_CLK_PLL4>, <&clks IMX6QDL_CLK_PLL4_AUDIO_DIV>;
-	assigned-clock-rates = <786432000>, <0>, <0>, <24576000>;
+	assigned-clock-rates = <737280000>, <0>, <0>, <24576000>;
 };
 
 &ssi2 {

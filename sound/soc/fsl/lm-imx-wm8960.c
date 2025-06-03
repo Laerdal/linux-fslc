@@ -373,8 +373,6 @@ static int imx_sp_audio_dai_init(struct snd_soc_pcm_runtime *rtd)
 	struct snd_soc_dai *codec_dai = asoc_rtd_to_codec(rtd, 0);
 	struct device *dev = rtd->card->dev;
 
-
-
 	if (data->board_info->cpu_type == CPUTYPE_IMX6) {
  		dev_info(dev, "%s: codec clock is %d\n", __func__, data->clk_frequency);
 		ret = snd_soc_dai_set_sysclk(codec_dai, WM8960_SYSCLK_PLL,
@@ -498,9 +496,9 @@ static int imx_wm8960_probe(struct platform_device *pdev)
 		goto cleanup;
 	}
 	codec_i2c = of_find_i2c_device_by_node(codec_np);
-	if (!codec_i2c) {
-		dev_dbg(&pdev->dev, "failed (%ld) to find codec platform device\n", PTR_ERR(codec_i2c));
-		ret = -EPROBE_DEFER;
+	if (!codec_i2c || !&codec_i2c->dev) {
+		dev_warn(&pdev->dev, "failed (%ld) to find codec platform device\n", PTR_ERR(codec_i2c));
+		ret = -ENODEV;
 		goto cleanup;
 	}
 

@@ -509,6 +509,8 @@
 		clocks = <&clks IMX6QDL_CLK_CKO>;
 		clock-names = "mclk";
 		wlf,shared-lrclk;
+		default-pll-lrclk = <48000>;
+		default-pll-bclk = <1536000>;
 		status = "okay";
 	   };
 };

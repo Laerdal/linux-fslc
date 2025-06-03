@@ -33,6 +33,9 @@ struct wm8960_data {
 	 * gpio_cfg[1]: {GPIOPOL:GPIOSEL[2:0]} of R48 (Additional Control 4).
 	 */
 	u32 gpio_cfg[2];
+
+	u32 default_pll_lrclk;
+	u32 default_pll_bclk;
 };
 
 #endif
