@@ -488,6 +488,7 @@
 		VDDA-supply = <&pmic_3v3>;
 		micbias-resistor-k-ohms = <2>;
 		micbias-voltage-m-volts = <2500>;
+		sclk-strength = <3>;
 	};
 
 	pmic: pca9450@25 {
