@@ -520,6 +520,8 @@
 	role-switch-default-mode = "device";
 	snps,dis-u1-entry-quirk;
 	snps,dis-u2-entry-quirk;
+	snps,dis_u3_susphy_quirk;
+	snps,dis_enblslpm_quirk;
 	status = "okay";
 
 	port {

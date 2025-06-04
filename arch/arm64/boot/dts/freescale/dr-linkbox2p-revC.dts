@@ -1047,6 +1047,8 @@ BIT2:1 STRENGTH x1,x2,x4,x6
 
 &usb_dwc3_0 {
 	dr_mode = "host";
+	snps,dis_u3_susphy_quirk;
+	snps,dis_enblslpm_quirk;
 	status = "okay";
 };
 
@@ -1074,6 +1076,8 @@ BIT2:1 STRENGTH x1,x2,x4,x6
 	adp-disable;
 	snps,dis-u1-entry-quirk;
 	snps,dis-u2-entry-quirk;
+	snps,dis_u3_susphy_quirk;
+	snps,dis_enblslpm_quirk;
 	status = "okay";
 };
 
