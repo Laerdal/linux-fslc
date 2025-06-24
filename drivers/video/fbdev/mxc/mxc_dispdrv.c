@@ -147,3 +147,4 @@ void *mxc_dispdrv_getdata(struct mxc_dispdrv_handle *handle)
 		return ERR_PTR(-EINVAL);
 }
 EXPORT_SYMBOL_GPL(mxc_dispdrv_getdata);
+MODULE_LICENSE("GPL");
