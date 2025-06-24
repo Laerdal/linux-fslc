@@ -568,6 +568,15 @@ struct pd_rx_event {
 	enum tcpm_transmit_type rx_sop_type;
 };
 
+struct altmode_vdm_event {
+	struct kthread_work work;
+	struct tcpm_port *port;
+	u32 header;
+	u32 *data;
+	int cnt;
+	enum tcpm_transmit_type tx_sop_type;
+};
+
 static const char * const pd_rev[] = {
 	[PD_REV10]		= "rev1",
 	[PD_REV20]		= "rev2",
@@ -1562,16 +1571,66 @@ static void tcpm_queue_vdm(struct tcpm_port *port, const u32 header,
 	mod_vdm_delayed_work(port, 0);
 }
 
-static void tcpm_queue_vdm_unlocked(struct tcpm_port *port, const u32 header,
-				    const u32 *data, int cnt, enum tcpm_transmit_type tx_sop_type)
+static void tcpm_queue_vdm_work(struct kthread_work *work)
 {
-	if (port->state != SRC_READY && port->state != SNK_READY &&
-	    port->state != SRC_VDM_IDENTITY_REQUEST)
-		return;
+	struct altmode_vdm_event *event = container_of(work,
+						       struct altmode_vdm_event,
+						       work);
+	struct tcpm_port *port = event->port;
 
 	mutex_lock(&port->lock);
-	tcpm_queue_vdm(port, header, data, cnt, tx_sop_type);
+	if (port->state != SRC_READY && port->state != SNK_READY &&
+	    port->state != SRC_VDM_IDENTITY_REQUEST) {
+		tcpm_log_force(port, "dropping altmode_vdm_event");
+		goto port_unlock;
+	}
+
+	tcpm_queue_vdm(port, event->header, event->data, event->cnt, event->tx_sop_type);
+
+port_unlock:
+	kfree(event->data);
+	kfree(event);
 	mutex_unlock(&port->lock);
+}
+
+static int tcpm_queue_vdm_unlocked(struct tcpm_port *port, const u32 header,
+				   const u32 *data, int cnt, enum tcpm_transmit_type tx_sop_type)
+{
+	struct altmode_vdm_event *event;
+	u32 *data_cpy;
+	int ret = -ENOMEM;
+
+	event = kzalloc(sizeof(*event), GFP_KERNEL);
+	if (!event)
+		goto err_event;
+
+	data_cpy = kcalloc(cnt, sizeof(u32), GFP_KERNEL);
+	if (!data_cpy)
+		goto err_data;
+
+	kthread_init_work(&event->work, tcpm_queue_vdm_work);
+	event->port = port;
+	event->header = header;
+	memcpy(data_cpy, data, sizeof(u32) * cnt);
+	event->data = data_cpy;
+	event->cnt = cnt;
+	event->tx_sop_type = tx_sop_type;
+
+	ret = kthread_queue_work(port->wq, &event->work);
+	if (!ret) {
+		ret = -EBUSY;
+		goto err_queue;
+	}
+
+	return 0;
+
+err_queue:
+	kfree(data_cpy);
+err_data:
+	kfree(event);
+err_event:
+	tcpm_log_force(port, "failed to queue altmode vdm, err:%d", ret);
+	return ret;
 }
 
 static void svdm_consume_identity(struct tcpm_port *port, const u32 *p, int cnt)
@@ -2784,8 +2843,7 @@ static int tcpm_altmode_enter(struct typec_altmode *altmode, u32 *vdo)
 	header = VDO(altmode->svid, vdo ? 2 : 1, svdm_version, CMD_ENTER_MODE);
 	header |= VDO_OPOS(altmode->mode);
 
-	tcpm_queue_vdm_unlocked(port, header, vdo, vdo ? 1 : 0, TCPC_TX_SOP);
-	return 0;
+	return tcpm_queue_vdm_unlocked(port, header, vdo, vdo ? 1 : 0, TCPC_TX_SOP);
 }
 
 static int tcpm_altmode_exit(struct typec_altmode *altmode)
@@ -2801,8 +2859,7 @@ static int tcpm_altmode_exit(struct typec_altmode *altmode)
 	header = VDO(altmode->svid, 1, svdm_version, CMD_EXIT_MODE);
 	header |= VDO_OPOS(altmode->mode);
 
-	tcpm_queue_vdm_unlocked(port, header, NULL, 0, TCPC_TX_SOP);
-	return 0;
+	return tcpm_queue_vdm_unlocked(port, header, NULL, 0, TCPC_TX_SOP);
 }
 
 static int tcpm_altmode_vdm(struct typec_altmode *altmode,
@@ -2810,9 +2867,7 @@ static int tcpm_altmode_vdm(struct typec_altmode *altmode,
 {
 	struct tcpm_port *port = typec_altmode_get_drvdata(altmode);
 
-	tcpm_queue_vdm_unlocked(port, header, data, count - 1, TCPC_TX_SOP);
-
-	return 0;
+	return tcpm_queue_vdm_unlocked(port, header, data, count - 1, TCPC_TX_SOP);
 }
 
 static const struct typec_altmode_ops tcpm_altmode_ops = {
@@ -2836,8 +2891,7 @@ static int tcpm_cable_altmode_enter(struct typec_altmode *altmode, enum typec_pl
 	header = VDO(altmode->svid, vdo ? 2 : 1, svdm_version, CMD_ENTER_MODE);
 	header |= VDO_OPOS(altmode->mode);
 
-	tcpm_queue_vdm_unlocked(port, header, vdo, vdo ? 1 : 0, TCPC_TX_SOP_PRIME);
-	return 0;
+	return tcpm_queue_vdm_unlocked(port, header, vdo, vdo ? 1 : 0, TCPC_TX_SOP_PRIME);
 }
 
 static int tcpm_cable_altmode_exit(struct typec_altmode *altmode, enum typec_plug_index sop)
@@ -2853,8 +2907,7 @@ static int tcpm_cable_altmode_exit(struct typec_altmode *altmode, enum typec_plu
 	header = VDO(altmode->svid, 1, svdm_version, CMD_EXIT_MODE);
 	header |= VDO_OPOS(altmode->mode);
 
-	tcpm_queue_vdm_unlocked(port, header, NULL, 0, TCPC_TX_SOP_PRIME);
-	return 0;
+	return tcpm_queue_vdm_unlocked(port, header, NULL, 0, TCPC_TX_SOP_PRIME);
 }
 
 static int tcpm_cable_altmode_vdm(struct typec_altmode *altmode, enum typec_plug_index sop,
@@ -2862,9 +2915,7 @@ static int tcpm_cable_altmode_vdm(struct typec_altmode *altmode, enum typec_plug
 {
 	struct tcpm_port *port = typec_altmode_get_drvdata(altmode);
 
-	tcpm_queue_vdm_unlocked(port, header, data, count - 1, TCPC_TX_SOP_PRIME);
-
-	return 0;
+	return tcpm_queue_vdm_unlocked(port, header, data, count - 1, TCPC_TX_SOP_PRIME);
 }
 
 static const struct typec_cable_ops tcpm_cable_ops = {
@@ -3887,20 +3938,11 @@ static int tcpm_pd_select_pdo(struct tcpm_port *port, int *sink_pdo,
 			continue;
 		}
 
-		switch (type) {
-		case PDO_TYPE_FIXED:
-		case PDO_TYPE_VAR:
+		if (type == PDO_TYPE_FIXED || type == PDO_TYPE_VAR) {
 			src_ma = pdo_max_current(pdo);
 			src_mw = src_ma * min_src_mv / 1000;
-			break;
-		case PDO_TYPE_BATT:
+		} else if (type == PDO_TYPE_BATT) {
 			src_mw = pdo_max_power(pdo);
-			break;
-		case PDO_TYPE_APDO:
-			continue;
-		default:
-			tcpm_log(port, "Invalid source PDO type, ignoring");
-			continue;
 		}
 
 		for (j = 0; j < port->nr_snk_pdo; j++) {
@@ -4282,6 +4324,8 @@ static int tcpm_src_attach(struct tcpm_port *port)
 	if (port->attached)
 		return 0;
 
+	tcpm_set_cc(port, tcpm_rp_cc(port));
+
 	ret = tcpm_set_polarity(port, polarity);
 	if (ret < 0)
 		return ret;
@@ -4455,6 +4499,8 @@ static int tcpm_snk_attach(struct tcpm_port *port)
 
 	if (port->attached)
 		return 0;
+
+	tcpm_set_cc(port, TYPEC_CC_RD);
 
 	ret = tcpm_set_polarity(port, port->cc2 != TYPEC_CC_OPEN ?
 				TYPEC_POLARITY_CC2 : TYPEC_POLARITY_CC1);
@@ -4966,7 +5012,11 @@ static void run_state_machine(struct tcpm_port *port)
 		ret = tcpm_snk_attach(port);
 		if (ret < 0)
 			tcpm_set_state(port, SNK_UNATTACHED, 0);
-		else
+		else if (port->port_type == TYPEC_PORT_SRC &&
+			 port->typec_caps.data == TYPEC_PORT_DRD) {
+			tcpm_typec_connect(port);
+			tcpm_log(port, "Keep at SNK_ATTACHED for USB data.");
+		} else
 			tcpm_set_state(port, SNK_STARTUP, 0);
 		break;
 	case SNK_STARTUP:
@@ -5890,7 +5940,7 @@ static void _tcpm_cc_change(struct tcpm_port *port, enum typec_cc_status cc1,
 	case SNK_TRY_WAIT_DEBOUNCE:
 		if (!tcpm_port_is_sink(port)) {
 			port->max_wait = 0;
-			tcpm_set_state(port, SRC_TRYWAIT, 0);
+			tcpm_set_state(port, SRC_TRYWAIT, PD_T_PD_DEBOUNCE);
 		}
 		break;
 	case SRC_TRY_WAIT:
@@ -7299,7 +7349,7 @@ static enum power_supply_property tcpm_psy_props[] = {
 static int tcpm_psy_get_online(struct tcpm_port *port,
 			       union power_supply_propval *val)
 {
-	if (port->vbus_charge) {
+	if (port->vbus_present && tcpm_port_is_sink(port)) {
 		if (port->pps_data.active)
 			val->intval = TCPM_PSY_PROG_ONLINE;
 		else
@@ -7446,7 +7496,7 @@ static int tcpm_psy_set_prop(struct power_supply *psy,
 			     const union power_supply_propval *val)
 {
 	struct tcpm_port *port = power_supply_get_drvdata(psy);
-	int ret;
+	int ret = 0;
 
 	/*
 	 * All the properties below are related to USB PD. The check needs to be
@@ -7467,6 +7517,9 @@ static int tcpm_psy_set_prop(struct power_supply *psy,
 			ret = -EINVAL;
 		else
 			ret = tcpm_pps_set_op_curr(port, val->intval / 1000);
+		break;
+	case POWER_SUPPLY_PROP_USB_TYPE:
+		port->usb_type = val->intval;
 		break;
 	default:
 		ret = -EINVAL;
@@ -7509,7 +7562,11 @@ static int devm_tcpm_psy_register(struct tcpm_port *port)
 		 port_dev_name);
 	port->psy_desc.name = psy_name;
 	port->psy_desc.type = POWER_SUPPLY_TYPE_USB;
-	port->psy_desc.usb_types = BIT(POWER_SUPPLY_USB_TYPE_C)  |
+	port->psy_desc.usb_types = BIT(POWER_SUPPLY_USB_TYPE_SDP) |
+				   BIT(POWER_SUPPLY_USB_TYPE_DCP) |
+				   BIT(POWER_SUPPLY_USB_TYPE_CDP) |
+				   BIT(POWER_SUPPLY_USB_TYPE_ACA) |
+				   BIT(POWER_SUPPLY_USB_TYPE_C)  |
 				   BIT(POWER_SUPPLY_USB_TYPE_PD) |
 				   BIT(POWER_SUPPLY_USB_TYPE_PD_PPS);
 	port->psy_desc.properties = tcpm_psy_props;

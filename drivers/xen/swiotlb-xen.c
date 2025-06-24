@@ -217,6 +217,7 @@ static dma_addr_t xen_swiotlb_map_page(struct device *dev, struct page *page,
 	 * buffering it.
 	 */
 	if (dma_capable(dev, dev_addr, size, true) &&
+	    !dma_kmalloc_needs_bounce(dev, size, dir) &&
 	    !range_straddles_page_boundary(phys, size) &&
 		!xen_arch_need_swiotlb(dev, phys, dev_addr) &&
 		!is_swiotlb_force_bounce(dev))
@@ -391,6 +392,23 @@ xen_swiotlb_sync_sg_for_device(struct device *dev, struct scatterlist *sgl,
 	}
 }
 
+/*swiotlb means disable IOMMU*/
+static dma_addr_t xen_swiotlb_dma_map_resource(struct device *dev, phys_addr_t phys_addr,
+					       size_t size, enum dma_data_direction dir,
+					       unsigned long attrs)
+{
+	dma_addr_t addr = DMA_MAPPING_ERROR;
+
+	addr = dma_direct_map_resource(dev, phys_addr, size, dir, attrs);
+	return addr;
+}
+
+static void xen_swiotlb_dma_unmap_resource(struct device *dev, dma_addr_t addr, size_t size,
+					   enum dma_data_direction dir, unsigned long attrs)
+{
+	/*do nothing*/
+}
+
 /*
  * Return whether the given device DMA address mask can be supported
  * properly.  For example, if your device can only drive the low 24-bits
@@ -425,4 +443,6 @@ const struct dma_map_ops xen_swiotlb_dma_ops = {
 	.alloc_pages_op = dma_common_alloc_pages,
 	.free_pages = dma_common_free_pages,
 	.max_mapping_size = swiotlb_max_mapping_size,
+	.map_resource = xen_swiotlb_dma_map_resource,
+	.unmap_resource = xen_swiotlb_dma_unmap_resource,
 };

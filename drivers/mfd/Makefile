@@ -115,6 +115,8 @@ obj-$(CONFIG_MFD_TWL4030_AUDIO)	+= twl4030-audio.o
 obj-$(CONFIG_TWL6040_CORE)	+= twl6040.o
 
 obj-$(CONFIG_MFD_MX25_TSADC)	+= fsl-imx25-tsadc.o
+obj-$(CONFIG_MFD_IMX_FLEXIO)	+= imx-flexio.o
+obj-$(CONFIG_MFD_MXC_HDMI)	+= mxc-hdmi-core.o
 
 obj-$(CONFIG_MFD_MC13XXX)	+= mc13xxx-core.o
 obj-$(CONFIG_MFD_MC13XXX_SPI)	+= mc13xxx-spi.o
@@ -162,7 +164,9 @@ obj-$(CONFIG_MFD_DA9063)	+= da9063.o
 obj-$(CONFIG_MFD_DA9150)	+= da9150-core.o
 
 obj-$(CONFIG_MFD_MAX14577)	+= max14577.o
+obj-$(CONFIG_MFD_MAX17135)	+= max17135-core.o
 obj-$(CONFIG_MFD_MAX77541)	+= max77541.o
+obj-$(CONFIG_MFD_FP9931)	+= fp9931-core.o
 obj-$(CONFIG_MFD_MAX77620)	+= max77620.o
 obj-$(CONFIG_MFD_MAX77650)	+= max77650.o
 obj-$(CONFIG_MFD_MAX77686)	+= max77686.o
@@ -174,6 +178,11 @@ max8925-objs			:= max8925-core.o max8925-i2c.o
 obj-$(CONFIG_MFD_MAX8925)	+= max8925.o
 obj-$(CONFIG_MFD_MAX8997)	+= max8997.o max8997-irq.o
 obj-$(CONFIG_MFD_MAX8998)	+= max8998.o max8998-irq.o
+obj-$(CONFIG_MFD_MAXIM_SERDES)  += maxim_serdes.o
+obj-$(CONFIG_MFD_MAX96752)	+= max96752-core.o
+obj-$(CONFIG_MFD_MAX96752_I2C)	+= max96752-i2c.o
+obj-$(CONFIG_MFD_MAX96789)	+= max96789-core.o
+obj-$(CONFIG_MFD_MAX96789_I2C)	+= max96789-i2c.o
 
 obj-$(CONFIG_MFD_MP2629)	+= mp2629.o
 

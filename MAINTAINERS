@@ -7594,7 +7594,7 @@ S:	Maintained
 T:	git https://gitlab.freedesktop.org/drm/misc/kernel.git
 T:	git git://git.pengutronix.de/git/pza/linux
 F:	Documentation/devicetree/bindings/display/imx/
-F:	drivers/gpu/drm/imx/ipuv3/
+F:	drivers/gpu/drm/imx/
 F:	drivers/gpu/ipu-v3/
 
 DRM DRIVERS FOR FREESCALE IMX BRIDGE
@@ -9106,6 +9106,14 @@ F:	drivers/net/ethernet/freescale/enetc/enetc_ptp.c
 F:	drivers/ptp/ptp_qoriq.c
 F:	drivers/ptp/ptp_qoriq_debugfs.c
 F:	include/linux/fsl/ptp_qoriq.h
+
+FREESCALE QORIQ PPFE ETHERNET DRIVER
+M:	Anji Jagarlmudi <anji.jagarlmudi@nxp.com>
+M:	Calvin Johnson <calvin.johnson@nxp.com>
+L:	netdev@vger.kernel.org
+S:	Maintained
+F:	drivers/staging/fsl_ppfe
+F:	Documentation/devicetree/bindings/net/fsl_ppfe/pfe.txt
 
 FREESCALE QUAD SPI DRIVER
 M:	Han Xu <han.xu@nxp.com>
@@ -12157,6 +12165,7 @@ L:	jailhouse-dev@googlegroups.com
 S:	Maintained
 F:	arch/x86/include/asm/jailhouse_para.h
 F:	arch/x86/kernel/jailhouse.c
+F:	drivers/virt/jailhouse_dbgcon.c
 
 JFS FILESYSTEM
 M:	Dave Kleikamp <shaggy@kernel.org>
@@ -12580,6 +12589,18 @@ F:	Documentation/security/keys/trusted-encrypted.rst
 F:	include/keys/encrypted-type.h
 F:	security/keys/encrypted-keys/
 
+KEYS-SECURE
+M:	Udit Agarwal <udit.agarwal@nxp.com>
+R:	Sahil Malhotra <sahil.malhotra@nxp.com>
+L:	linux-security-module@vger.kernel.org
+L:	keyrings@vger.kernel.org
+S:	Supported
+F:	include/keys/secure-type.h
+F:	security/keys/secure_key.c
+F:	security/keys/securekey_desc.c
+F:	security/keys/securekey_desc.h
+F:	security/keys/encrypted-keys/masterkey_secure.c
+
 KEYS-TRUSTED
 M:	James Bottomley <James.Bottomley@HansenPartnership.com>
 M:	Jarkko Sakkinen <jarkko@kernel.org>
@@ -12617,6 +12638,15 @@ L:	keyrings@vger.kernel.org
 S:	Supported
 F:	include/keys/trusted_tee.h
 F:	security/keys/trusted-keys/trusted_tee.c
+
+KEYS-TRUSTED-CAAM
+M:	Ahmad Fatoum <a.fatoum@pengutronix.de>
+R:	Pengutronix Kernel Team <kernel@pengutronix.de>
+L:	linux-integrity@vger.kernel.org
+L:	keyrings@vger.kernel.org
+S:	Maintained
+F:	include/keys/trusted_caam.h
+F:	security/keys/trusted-keys/trusted_caam.c
 
 KEYS/KEYRINGS
 M:	David Howells <dhowells@redhat.com>
@@ -17503,7 +17533,7 @@ F:	include/uapi/linux/ppdev.h
 PARAVIRT_OPS INTERFACE
 M:	Juergen Gross <jgross@suse.com>
 R:	Ajay Kaher <ajay.kaher@broadcom.com>
-R:	Alexey Makhalov <alexey.amakhalov@broadcom.com>
+R:	Alexey Makhalov <alexey.makhalov@broadcom.com>
 R:	Broadcom internal kernel review list <bcm-kernel-feedback-list@broadcom.com>
 L:	virtualization@lists.linux.dev
 L:	x86@kernel.org
@@ -24729,7 +24759,7 @@ F:	drivers/misc/vmw_balloon.c
 
 VMWARE HYPERVISOR INTERFACE
 M:	Ajay Kaher <ajay.kaher@broadcom.com>
-M:	Alexey Makhalov <alexey.amakhalov@broadcom.com>
+M:	Alexey Makhalov <alexey.makhalov@broadcom.com>
 R:	Broadcom internal kernel review list <bcm-kernel-feedback-list@broadcom.com>
 L:	virtualization@lists.linux.dev
 L:	x86@kernel.org
@@ -24757,7 +24787,7 @@ F:	drivers/scsi/vmw_pvscsi.h
 VMWARE VIRTUAL PTP CLOCK DRIVER
 M:	Nick Shi <nick.shi@broadcom.com>
 R:	Ajay Kaher <ajay.kaher@broadcom.com>
-R:	Alexey Makhalov <alexey.amakhalov@broadcom.com>
+R:	Alexey Makhalov <alexey.makhalov@broadcom.com>
 R:	Broadcom internal kernel review list <bcm-kernel-feedback-list@broadcom.com>
 L:	netdev@vger.kernel.org
 S:	Supported
@@ -25714,3 +25744,9 @@ S:	Buried alive in reporters
 T:	git git://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git
 F:	*
 F:	*/
+
+NXP IMX9 TRUE RANDOM NUMBER GENERATOR (TRNG) DRIVER
+M:	Gaurav Jain <gaurav.jain@nxp.com>
+L:	linux-crypto@vger.kernel.org
+S:	Maintained
+F:	drivers/firmware/imx/ele_trng.c

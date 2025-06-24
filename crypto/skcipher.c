@@ -612,7 +612,8 @@ int crypto_skcipher_setkey(struct crypto_skcipher *tfm, const u8 *key,
 		goto out;
 	}
 
-	if (keylen < cipher->min_keysize || keylen > cipher->max_keysize)
+	if ((!tfm->base.is_hbk)
+	    && (keylen < cipher->min_keysize || keylen > cipher->max_keysize))
 		return -EINVAL;
 
 	if ((unsigned long)key & alignmask)
@@ -844,6 +845,7 @@ struct crypto_sync_skcipher *crypto_alloc_sync_skcipher(
 
 	/* Only sync algorithms allowed. */
 	mask |= CRYPTO_ALG_ASYNC | CRYPTO_ALG_SKCIPHER_REQSIZE_LARGE;
+	type &= ~(CRYPTO_ALG_ASYNC | CRYPTO_ALG_SKCIPHER_REQSIZE_LARGE);
 
 	tfm = crypto_alloc_tfm(alg_name, &crypto_skcipher_type, type, mask);
 

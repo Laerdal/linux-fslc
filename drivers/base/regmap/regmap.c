@@ -759,6 +759,9 @@ struct regmap *__regmap_init(struct device *dev,
 		map->lock_key = lock_key;
 	}
 
+	if (config->disable_debugfs && !config->disable_locking)
+		regmap_debugfs_disable(map);
+
 	/*
 	 * When we write in fast-paths with regmap_bulk_write() don't allocate
 	 * scratch buffers with sleeping allocations.
@@ -1155,8 +1158,6 @@ skip_format_initialization:
 		ret = regmap_attach_dev(dev, map, config);
 		if (ret != 0)
 			goto err_regcache;
-	} else {
-		regmap_debugfs_init(map);
 	}
 
 	return map;

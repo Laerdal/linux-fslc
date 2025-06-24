@@ -111,7 +111,14 @@ static struct arm64_cpu_capabilities const __ro_after_init *cpucap_ptrs[ARM64_NC
 
 DECLARE_BITMAP(boot_cpucaps, ARM64_NCAPS);
 
-bool arm64_use_ng_mappings = false;
+/*
+ * arm64_use_ng_mappings must be placed in the .data section, otherwise it
+ * ends up in the .bss section where it is initialized in early_map_kernel()
+ * after the MMU (with the idmap) was enabled. create_init_idmap() - which
+ * runs before early_map_kernel() and reads the variable via PTE_MAYBE_NG -
+ * may end up generating an incorrect idmap page table attributes.
+ */
+bool arm64_use_ng_mappings __read_mostly = false;
 EXPORT_SYMBOL(arm64_use_ng_mappings);
 
 DEFINE_PER_CPU_READ_MOSTLY(const char *, this_cpu_vector) = vectors;
@@ -1047,9 +1054,22 @@ init_cpucap_indirect_list_from_array(const struct arm64_cpu_capabilities *caps)
 	}
 }
 
+bool TKT340553_SW_WORKAROUND;
 static void __init init_cpucap_indirect_list(void)
 {
 	init_cpucap_indirect_list_from_array(arm64_features);
+#ifdef CONFIG_ARM64_WORKAROUND_CLEAN_CACHE
+#if	defined(CONFIG_ARM64_ERRATUM_826319) || \
+	defined(CONFIG_ARM64_ERRATUM_827319) || \
+	defined(CONFIG_ARM64_ERRATUM_824069)
+	if (TKT340553_SW_WORKAROUND) {
+		struct midr_range *midr_range_list =
+			(struct midr_range *)(arm64_errata[0].midr_range_list);
+
+		midr_range_list[0].rv_max = MIDR_CPU_VAR_REV(0, 4);
+	}
+#endif
+#endif
 	init_cpucap_indirect_list_from_array(arm64_errata);
 }
 

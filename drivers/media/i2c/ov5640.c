@@ -19,6 +19,7 @@
 #include <linux/regulator/consumer.h>
 #include <linux/slab.h>
 #include <linux/types.h>
+#include <media/mipi-csi2.h>
 #include <media/v4l2-async.h>
 #include <media/v4l2-ctrls.h>
 #include <media/v4l2-device.h>
@@ -193,6 +194,7 @@ enum ov5640_format_mux {
 struct ov5640_pixfmt {
 	u32 code;
 	u32 colorspace;
+	u32 data_type;
 	u8 bpp;
 	u8 ctrl00;
 	enum ov5640_format_mux mux;
@@ -271,6 +273,7 @@ static const struct ov5640_pixfmt ov5640_csi2_formats[] = {
 		/* YUV422, YUYV */
 		.code		= MEDIA_BUS_FMT_JPEG_1X8,
 		.colorspace	= V4L2_COLORSPACE_JPEG,
+		.data_type	= MIPI_CSI2_DT_RAW8,
 		.bpp		= 16,
 		.ctrl00		= 0x30,
 		.mux		= OV5640_FMT_MUX_YUV422,
@@ -278,6 +281,7 @@ static const struct ov5640_pixfmt ov5640_csi2_formats[] = {
 		/* YUV422, UYVY */
 		.code		= MEDIA_BUS_FMT_UYVY8_1X16,
 		.colorspace	= V4L2_COLORSPACE_SRGB,
+		.data_type	= MIPI_CSI2_DT_YUV422_8B,
 		.bpp		= 16,
 		.ctrl00		= 0x3f,
 		.mux		= OV5640_FMT_MUX_YUV422,
@@ -285,6 +289,7 @@ static const struct ov5640_pixfmt ov5640_csi2_formats[] = {
 		/* YUV422, YUYV */
 		.code		= MEDIA_BUS_FMT_YUYV8_1X16,
 		.colorspace	= V4L2_COLORSPACE_SRGB,
+		.data_type	= MIPI_CSI2_DT_YUV422_8B,
 		.bpp		= 16,
 		.ctrl00		= 0x30,
 		.mux		= OV5640_FMT_MUX_YUV422,
@@ -292,6 +297,7 @@ static const struct ov5640_pixfmt ov5640_csi2_formats[] = {
 		/* RGB565 {g[2:0],b[4:0]},{r[4:0],g[5:3]} */
 		.code		= MEDIA_BUS_FMT_RGB565_1X16,
 		.colorspace	= V4L2_COLORSPACE_SRGB,
+		.data_type	= MIPI_CSI2_DT_RGB565,
 		.bpp		= 16,
 		.ctrl00		= 0x6f,
 		.mux		= OV5640_FMT_MUX_RGB,
@@ -299,6 +305,7 @@ static const struct ov5640_pixfmt ov5640_csi2_formats[] = {
 		/* BGR888: RGB */
 		.code		= MEDIA_BUS_FMT_BGR888_1X24,
 		.colorspace	= V4L2_COLORSPACE_SRGB,
+		.data_type	= MIPI_CSI2_DT_RGB888,
 		.bpp		= 24,
 		.ctrl00		= 0x23,
 		.mux		= OV5640_FMT_MUX_RGB,
@@ -306,6 +313,7 @@ static const struct ov5640_pixfmt ov5640_csi2_formats[] = {
 		/* Raw, BGBG... / GRGR... */
 		.code		= MEDIA_BUS_FMT_SBGGR8_1X8,
 		.colorspace	= V4L2_COLORSPACE_SRGB,
+		.data_type	= MIPI_CSI2_DT_RAW8,
 		.bpp		= 8,
 		.ctrl00		= 0x00,
 		.mux		= OV5640_FMT_MUX_RAW_DPC,
@@ -313,6 +321,7 @@ static const struct ov5640_pixfmt ov5640_csi2_formats[] = {
 		/* Raw bayer, GBGB... / RGRG... */
 		.code		= MEDIA_BUS_FMT_SGBRG8_1X8,
 		.colorspace	= V4L2_COLORSPACE_SRGB,
+		.data_type	= MIPI_CSI2_DT_RAW8,
 		.bpp		= 8,
 		.ctrl00		= 0x01,
 		.mux		= OV5640_FMT_MUX_RAW_DPC,
@@ -320,6 +329,7 @@ static const struct ov5640_pixfmt ov5640_csi2_formats[] = {
 		/* Raw bayer, GRGR... / BGBG... */
 		.code		= MEDIA_BUS_FMT_SGRBG8_1X8,
 		.colorspace	= V4L2_COLORSPACE_SRGB,
+		.data_type	= MIPI_CSI2_DT_RAW8,
 		.bpp		= 8,
 		.ctrl00		= 0x02,
 		.mux		= OV5640_FMT_MUX_RAW_DPC,
@@ -327,6 +337,7 @@ static const struct ov5640_pixfmt ov5640_csi2_formats[] = {
 		/* Raw bayer, RGRG... / GBGB... */
 		.code		= MEDIA_BUS_FMT_SRGGB8_1X8,
 		.colorspace	= V4L2_COLORSPACE_SRGB,
+		.data_type	= MIPI_CSI2_DT_RAW8,
 		.bpp		= 8,
 		.ctrl00		= 0x03,
 		.mux		= OV5640_FMT_MUX_RAW_DPC,
@@ -545,6 +556,7 @@ static const struct v4l2_mbus_framefmt ov5640_dvp_default_fmt = {
 
 static const struct reg_value ov5640_init_setting[] = {
 	{0x3103, 0x11, 0, 0},
+	{0x3008, 0x82, 0, 3}, {0x3008, 0x42, 0, 5},
 	{0x3103, 0x03, 0, 0}, {0x3630, 0x36, 0, 0},
 	{0x3631, 0x0e, 0, 0}, {0x3632, 0xe2, 0, 0}, {0x3633, 0x12, 0, 0},
 	{0x3621, 0xe0, 0, 0}, {0x3704, 0xa0, 0, 0}, {0x3703, 0x5a, 0, 0},
@@ -2727,6 +2739,11 @@ power_off:
 	return ret;
 }
 
+static int ov5640_s_power(struct v4l2_subdev *sd, int on)
+{
+	return 0;
+}
+
 static int ov5640_sensor_suspend(struct device *dev)
 {
 	struct v4l2_subdev *sd = dev_get_drvdata(dev);
@@ -2802,10 +2819,10 @@ static int ov5640_get_fmt(struct v4l2_subdev *sd,
 	else
 		fmt = &sensor->fmt;
 
+	fmt->reserved[1] = (sensor->current_fr == OV5640_30_FPS) ? 30 : 15;
 	format->format = *fmt;
 
 	mutex_unlock(&sensor->lock);
-
 	return 0;
 }
 
@@ -3605,6 +3622,30 @@ static int ov5640_enum_frame_interval(
 	return 0;
 }
 
+static int ov5640_get_frame_desc(struct v4l2_subdev *sd, unsigned int pad,
+				 struct v4l2_mbus_frame_desc *fd)
+{
+	struct ov5640_dev *sensor = to_ov5640_dev(sd);
+	const struct v4l2_mbus_framefmt *format = &sensor->fmt;
+	const struct ov5640_pixfmt *pixfmt;
+
+	if (pad || !fd)
+		return -EINVAL;
+
+	memset(fd, 0x0, sizeof(*fd));
+
+	pixfmt = ov5640_code_to_pixfmt(sensor, format->code);
+
+	fd->entry[0].flags = 0;
+	fd->entry[0].pixelcode = pixfmt->code;
+	fd->entry[0].bus.csi2.vc = 0;
+	fd->entry[0].bus.csi2.dt = pixfmt->data_type;
+	fd->type = V4L2_MBUS_FRAME_DESC_TYPE_CSI2;
+	fd->num_entries = 1;
+
+	return 0;
+}
+
 static int ov5640_get_frame_interval(struct v4l2_subdev *sd,
 				     struct v4l2_subdev_state *sd_state,
 				     struct v4l2_subdev_frame_interval *fi)
@@ -3781,6 +3822,7 @@ static int ov5640_init_state(struct v4l2_subdev *sd,
 }
 
 static const struct v4l2_subdev_core_ops ov5640_core_ops = {
+	.s_power = ov5640_s_power,
 	.log_status = v4l2_ctrl_subdev_log_status,
 	.subscribe_event = v4l2_ctrl_subdev_subscribe_event,
 	.unsubscribe_event = v4l2_event_subdev_unsubscribe,
@@ -3799,6 +3841,7 @@ static const struct v4l2_subdev_pad_ops ov5640_pad_ops = {
 	.set_frame_interval = ov5640_set_frame_interval,
 	.enum_frame_size = ov5640_enum_frame_size,
 	.enum_frame_interval = ov5640_enum_frame_interval,
+	.get_frame_desc = ov5640_get_frame_desc,
 };
 
 static const struct v4l2_subdev_ops ov5640_subdev_ops = {
@@ -3809,6 +3852,17 @@ static const struct v4l2_subdev_ops ov5640_subdev_ops = {
 
 static const struct v4l2_subdev_internal_ops ov5640_internal_ops = {
 	.init_state = ov5640_init_state,
+};
+
+static int ov5640_link_setup(struct media_entity *entity,
+			   const struct media_pad *local,
+			   const struct media_pad *remote, u32 flags)
+{
+	return 0;
+}
+
+static const struct media_entity_operations ov5640_sd_media_ops = {
+	.link_setup = ov5640_link_setup,
 };
 
 static int ov5640_get_regulators(struct ov5640_dev *sensor)
@@ -3930,6 +3984,7 @@ static int ov5640_probe(struct i2c_client *client)
 	sensor->sd.flags |= V4L2_SUBDEV_FL_HAS_DEVNODE |
 			    V4L2_SUBDEV_FL_HAS_EVENTS;
 	sensor->pad.flags = MEDIA_PAD_FL_SOURCE;
+	sensor->sd.entity.ops = &ov5640_sd_media_ops;
 	sensor->sd.entity.function = MEDIA_ENT_F_CAM_SENSOR;
 	ret = media_entity_pads_init(&sensor->sd.entity, 1, &sensor->pad);
 	if (ret)

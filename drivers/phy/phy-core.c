@@ -405,13 +405,14 @@ EXPORT_SYMBOL_GPL(phy_power_off);
 
 int phy_set_mode_ext(struct phy *phy, enum phy_mode mode, int submode)
 {
-	int ret;
+	int ret = 0;
 
-	if (!phy || !phy->ops->set_mode)
+	if (!phy)
 		return 0;
 
 	mutex_lock(&phy->mutex);
-	ret = phy->ops->set_mode(phy, mode, submode);
+	if (phy->ops->set_mode)
+		ret = phy->ops->set_mode(phy, mode, submode);
 	if (!ret)
 		phy->attrs.mode = mode;
 	mutex_unlock(&phy->mutex);
@@ -606,6 +607,37 @@ int phy_validate(struct phy *phy, enum phy_mode mode, int submode,
 	return ret;
 }
 EXPORT_SYMBOL_GPL(phy_validate);
+
+/**
+ * phy_get_status() - Query various parameters of a PHY
+ * @phy: the phy returned by phy_get()
+ * @type: type of the status being queried
+ * @opts: pointer to union of status structures, determined by type
+ *
+ * phy_init() must have been called on the phy. The status is relative to the
+ * current phy mode, that can be changed using phy_set_mode(). Not all status
+ * types may be relevant to all phy modes.
+ *
+ * Return: %0 if successful, a negative error code otherwise
+ */
+int phy_get_status(struct phy *phy, enum phy_status_type type,
+		   union phy_status_opts *opts)
+{
+	int ret;
+
+	if (!phy)
+		return -EINVAL;
+
+	if (!phy->ops->get_status)
+		return -EOPNOTSUPP;
+
+	mutex_lock(&phy->mutex);
+	ret = phy->ops->get_status(phy, type, opts);
+	mutex_unlock(&phy->mutex);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(phy_get_status);
 
 /**
  * _of_phy_get() - lookup and obtain a reference to a phy by phandle

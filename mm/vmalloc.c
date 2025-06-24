@@ -317,7 +317,7 @@ int vmap_page_range(unsigned long addr, unsigned long end,
 {
 	int err;
 
-	err = vmap_range_noflush(addr, end, phys_addr, pgprot_nx(prot),
+	err = vmap_range_noflush(addr, end, phys_addr, prot,
 				 ioremap_max_page_shift);
 	flush_cache_vmap(addr, end);
 	if (!err)
@@ -345,6 +345,7 @@ int ioremap_page_range(unsigned long addr, unsigned long end,
 	}
 	return vmap_page_range(addr, end, phys_addr, prot);
 }
+EXPORT_SYMBOL_GPL(ioremap_page_range);
 
 static void vunmap_pte_range(pmd_t *pmd, unsigned long addr, unsigned long end,
 			     pgtbl_mod_mask *mask)
@@ -1940,7 +1941,7 @@ static inline void setup_vmalloc_vm(struct vm_struct *vm,
 {
 	vm->flags = flags;
 	vm->addr = (void *)va->va_start;
-	vm->size = va_size(va);
+	vm->size = vm->requested_size = va_size(va);
 	vm->caller = caller;
 	va->vm = vm;
 }
@@ -3128,6 +3129,7 @@ static struct vm_struct *__get_vm_area_node(unsigned long size,
 
 	area->flags = flags;
 	area->caller = caller;
+	area->requested_size = requested_size;
 
 	va = alloc_vmap_area(size, align, start, end, node, gfp_mask, 0, area);
 	if (IS_ERR(va)) {
@@ -3157,6 +3159,7 @@ struct vm_struct *__get_vm_area_caller(unsigned long size, unsigned long flags,
 	return __get_vm_area_node(size, 1, PAGE_SHIFT, flags, start, end,
 				  NUMA_NO_NODE, GFP_KERNEL, caller);
 }
+EXPORT_SYMBOL_GPL(__get_vm_area_caller);
 
 /**
  * get_vm_area - reserve a contiguous kernel virtual area
@@ -4067,6 +4070,8 @@ EXPORT_SYMBOL(vzalloc_node_noprof);
  */
 void *vrealloc_noprof(const void *p, size_t size, gfp_t flags)
 {
+	struct vm_struct *vm = NULL;
+	size_t alloced_size = 0;
 	size_t old_size = 0;
 	void *n;
 
@@ -4076,15 +4081,17 @@ void *vrealloc_noprof(const void *p, size_t size, gfp_t flags)
 	}
 
 	if (p) {
-		struct vm_struct *vm;
-
 		vm = find_vm_area(p);
 		if (unlikely(!vm)) {
 			WARN(1, "Trying to vrealloc() nonexistent vm area (%p)\n", p);
 			return NULL;
 		}
 
-		old_size = get_vm_area_size(vm);
+		alloced_size = get_vm_area_size(vm);
+		old_size = vm->requested_size;
+		if (WARN(alloced_size < old_size,
+			 "vrealloc() has mismatched area vs requested sizes (%p)\n", p))
+			return NULL;
 	}
 
 	/*
@@ -4092,11 +4099,26 @@ void *vrealloc_noprof(const void *p, size_t size, gfp_t flags)
 	 * would be a good heuristic for when to shrink the vm_area?
 	 */
 	if (size <= old_size) {
-		/* Zero out spare memory. */
-		if (want_init_on_alloc(flags))
+		/* Zero out "freed" memory, potentially for future realloc. */
+		if (want_init_on_free() || want_init_on_alloc(flags))
 			memset((void *)p + size, 0, old_size - size);
+		vm->requested_size = size;
 		kasan_poison_vmalloc(p + size, old_size - size);
-		kasan_unpoison_vmalloc(p, size, KASAN_VMALLOC_PROT_NORMAL);
+		return (void *)p;
+	}
+
+	/*
+	 * We already have the bytes available in the allocation; use them.
+	 */
+	if (size <= alloced_size) {
+		kasan_unpoison_vmalloc(p + old_size, size - old_size,
+				       KASAN_VMALLOC_PROT_NORMAL);
+		/*
+		 * No need to zero memory here, as unused memory will have
+		 * already been zeroed at initial allocation time or during
+		 * realloc shrink time.
+		 */
+		vm->requested_size = size;
 		return (void *)p;
 	}
 

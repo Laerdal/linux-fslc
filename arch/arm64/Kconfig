@@ -322,9 +322,9 @@ config ARCH_MMAP_RND_BITS_MAX
 	default 24 if ARM64_VA_BITS=39
 	default 27 if ARM64_VA_BITS=42
 	default 30 if ARM64_VA_BITS=47
-	default 29 if ARM64_VA_BITS=48 && ARM64_64K_PAGES
-	default 31 if ARM64_VA_BITS=48 && ARM64_16K_PAGES
-	default 33 if ARM64_VA_BITS=48
+	default 29 if (ARM64_VA_BITS=48 || ARM64_VA_BITS=52) && ARM64_64K_PAGES
+	default 31 if (ARM64_VA_BITS=48 || ARM64_VA_BITS=52) && ARM64_16K_PAGES
+	default 33 if (ARM64_VA_BITS=48 || ARM64_VA_BITS=52)
 	default 14 if ARM64_64K_PAGES
 	default 16 if ARM64_16K_PAGES
 	default 18
@@ -1621,9 +1621,11 @@ config XEN
 # 16K |       27          |      14      |       13             |         11              |
 # 64K |       29          |      16      |       13             |         13              |
 config ARCH_FORCE_MAX_ORDER
-	int
+	int "Maximum zone order" if ARM64_4K_PAGES || ARM64_16K_PAGES
 	default "13" if ARM64_64K_PAGES
+	range 11 13 if ARM64_16K_PAGES
 	default "11" if ARM64_16K_PAGES
+	range 10 15 if ARM64_4K_PAGES
 	default "10"
 	help
 	  The kernel page allocator limits the size of maximal physically

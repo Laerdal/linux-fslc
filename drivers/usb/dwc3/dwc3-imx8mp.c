@@ -5,6 +5,7 @@
  * Copyright (c) 2020 NXP.
  */
 
+#include <linux/busfreq-imx.h>
 #include <linux/cleanup.h>
 #include <linux/clk.h>
 #include <linux/interrupt.h>
@@ -158,6 +159,39 @@ static irqreturn_t dwc3_imx8mp_interrupt(int irq, void *_dwc3_imx)
 	return IRQ_HANDLED;
 }
 
+static void dwc3_imx8mp_set_role_post(struct dwc3 *dwc, u32 role)
+{
+	switch (role) {
+	case DWC3_GCTL_PRTCAP_HOST:
+		/*
+		 * For xhci host, we need disable dwc core auto
+		 * suspend, because during this auto suspend delay(5s),
+		 * xhci host RUN_STOP is cleared and wakeup is not
+		 * enabled, if device is inserted, xhci host can't
+		 * response the connection.
+		 */
+		pm_runtime_dont_use_autosuspend(dwc->dev);
+		break;
+	case DWC3_GCTL_PRTCAP_DEVICE:
+		pm_runtime_use_autosuspend(dwc->dev);
+		break;
+	default:
+		break;
+	}
+}
+
+static struct dwc3_platform_data dwc3_imx8mp_pdata = {
+	.set_role_post = dwc3_imx8mp_set_role_post,
+};
+
+static struct of_dev_auxdata dwc3_imx8mp_auxdata[] = {
+	{
+	.compatible = "snps,dwc3",
+	.platform_data = &dwc3_imx8mp_pdata,
+	},
+	{},
+};
+
 static int dwc3_imx8mp_probe(struct platform_device *pdev)
 {
 	struct device		*dev = &pdev->dev;
@@ -214,6 +248,8 @@ static int dwc3_imx8mp_probe(struct platform_device *pdev)
 
 	imx8mp_configure_glue(dwc3_imx);
 
+	request_bus_freq(BUS_FREQ_HIGH);
+
 	pm_runtime_set_active(dev);
 	pm_runtime_enable(dev);
 	err = pm_runtime_get_sync(dev);
@@ -227,7 +263,7 @@ static int dwc3_imx8mp_probe(struct platform_device *pdev)
 		goto disable_rpm;
 	}
 
-	err = of_platform_populate(node, NULL, NULL, dev);
+	err = of_platform_populate(node, NULL, dwc3_imx8mp_auxdata, dev);
 	if (err) {
 		dev_err(&pdev->dev, "failed to create dwc3 core\n");
 		goto remove_swnode;
@@ -259,6 +295,7 @@ remove_swnode:
 disable_rpm:
 	pm_runtime_disable(dev);
 	pm_runtime_put_noidle(dev);
+	release_bus_freq(BUS_FREQ_HIGH);
 
 	return err;
 }
@@ -273,6 +310,7 @@ static void dwc3_imx8mp_remove(struct platform_device *pdev)
 
 	pm_runtime_disable(dev);
 	pm_runtime_put_noidle(dev);
+	release_bus_freq(BUS_FREQ_HIGH);
 }
 
 static int dwc3_imx8mp_suspend(struct dwc3_imx8mp *dwc3_imx, pm_message_t msg)
@@ -284,6 +322,7 @@ static int dwc3_imx8mp_suspend(struct dwc3_imx8mp *dwc3_imx, pm_message_t msg)
 	if (PMSG_IS_AUTO(msg) || device_may_wakeup(dwc3_imx->dev))
 		dwc3_imx8mp_wakeup_enable(dwc3_imx, msg);
 
+	release_bus_freq(BUS_FREQ_HIGH);
 	dwc3_imx->pm_suspended = true;
 
 	return 0;
@@ -297,6 +336,7 @@ static int dwc3_imx8mp_resume(struct dwc3_imx8mp *dwc3_imx, pm_message_t msg)
 	if (!dwc3_imx->pm_suspended)
 		return 0;
 
+	request_bus_freq(BUS_FREQ_HIGH);
 	/* Wakeup disable */
 	dwc3_imx8mp_wakeup_disable(dwc3_imx);
 	dwc3_imx->pm_suspended = false;

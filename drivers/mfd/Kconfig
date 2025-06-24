@@ -546,6 +546,21 @@ config MFD_MX25_TSADC
 	  i.MX25 processors. They consist of a conversion queue for general
 	  purpose ADC and a queue for Touchscreens.
 
+config MFD_IMX_FLEXIO
+	tristate "NXP i.MX FlexIO core driver support"
+	depends on OF
+	select MFD_CORE
+	select REGMAP_MMIO
+	help
+	  Enable FlexIO core driver support.
+
+config MFD_MXC_HDMI
+	tristate "Freescale HDMI Core"
+	select MFD_CORE
+	help
+	  This is the core driver for the Freescale i.MX6 on-chip HDMI.
+	  This MFD driver connects with the video and audio drivers for HDMI.
+
 config MFD_HI6421_PMIC
 	tristate "HiSilicon Hi6421 PMU/Codec IC"
 	depends on OF
@@ -832,6 +847,14 @@ config MFD_MAX14577
 	  additional drivers must be enabled in order to use the functionality
 	  of the device.
 
+config MFD_MAX17135
+	tristate "Maxim MAX17135 EPD PMIC core"
+	depends on I2C
+
+	help
+	  This is the MAX17135 PMIC support. It includes
+	  core support for communication with the MAX17135 chip.
+
 config MFD_MAX77541
 	tristate "Analog Devices MAX77541/77540 PMIC Support"
 	depends on I2C=y
@@ -844,6 +867,14 @@ config MFD_MAX77541
 	  common support for accessing the device; additional drivers
 	  must be enabled in order to use the functionality of the device.
 	  There are regulators and adc.
+
+config MFD_FP9931
+	tristate "Fitipower FP9931 EPD PMIC Core"
+	depends on I2C && OF
+
+	help
+	  This is the FP9931 PMIC support. It includes
+	  core support for communication with the FP9931 chip.
 
 config MFD_MAX77620
 	bool "Maxim Semiconductor MAX77620 and MAX20024 PMIC Support"
@@ -978,6 +1009,47 @@ config MFD_MAX8998
 	  This driver provides common support for accessing the device,
 	  additional drivers must be enabled in order to use the functionality
 	  of the device.
+
+config MFD_MAXIM_SERDES
+	tristate "Maxim SerDes glue layer"
+	help
+	  Allow some basic communication between serializer and deserializer drivers.
+
+config MFD_MAX96752
+	tristate "Analog Devices MAX96752 Deserializer core support"
+	select MFD_CORE
+	select REGMAP
+	select MFD_MAXIM_SERDES
+	help
+	  Support for Analog Devices MAX96752 GMSL deserializer. The
+	  deserializer converts a single or dual-link GMSL serial input to
+	  single or dual OLDI.
+
+config MFD_MAX96752_I2C
+	tristate "Analog Devices MAX96752 Deserializer with I2C"
+	depends on MFD_MAX96752
+	depends on I2C
+	select REGMAP_I2C
+	help
+	  Support for Analog Devices MAX96752 GMSL deserializer over I2C.
+
+config MFD_MAX96789
+	tristate "Analog Devices MAX96789 DSI Serializer core support"
+	select MFD_CORE
+	select REGMAP
+	select MFD_MAXIM_SERDES
+	help
+	  Support for Analog Devices MAX96789 MIPI-DSI serializer. This
+	  serializer converts dual MIPI DSI, four-lane input port data to dual
+	  Maxim Integrated’s GMSL 1 or 2 high-speed serial link protocol.
+
+config MFD_MAX96789_I2C
+	tristate "Analog Devices MAX96789 DSI Serializer with I2C"
+	depends on MFD_MAX96789
+	depends on I2C
+	select REGMAP_I2C
+	help
+	  Support for Analog Devices MAX96789 MIPI-DSI serializer over I2C.
 
 config MFD_MT6360
 	tristate "Mediatek MT6360 SubPMIC"
