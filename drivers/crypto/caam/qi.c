@@ -124,8 +124,8 @@ int caam_qi_enqueue(struct device *qidev, struct caam_drv_req *req)
 		if (likely(!ret)) {
 			refcount_inc(&req->drv_ctx->refcnt);
 			return 0;
-		}
 
+		refcount_dec(&req->drv_ctx->refcnt);
 		if (ret != -EBUSY)
 			break;
 		num_retries++;
