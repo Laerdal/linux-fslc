@@ -825,9 +825,9 @@ static void fsl_sai_config_disable(struct fsl_sai *sai, int dir)
 		*/
 		if (!sai->is_consumer_mode[tx]) {
 			/* Software Reset */
-			regmap_write(sai->regmap, FSL_SAI_xCSR(tx, ofs), FSL_SAI_CSR_SR);
+	regmap_update_bits(sai->regmap, FSL_SAI_xCSR(tx, ofs), FSL_SAI_CSR_SR, FSL_SAI_CSR_SR);
 			/* Clear SR bit to finish the reset */
-			regmap_write(sai->regmap, FSL_SAI_xCSR(tx, ofs), 0);
+	regmap_update_bits(sai->regmap, FSL_SAI_xCSR(tx, ofs), FSL_SAI_CSR_SR, 0);
 		}
 	}
 }
