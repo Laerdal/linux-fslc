@@ -709,6 +709,16 @@ int wm8960_configure_pll(struct snd_soc_component *component, int freq_in,
 
 	bclk = wm8960->bclk;
 	lrclk = wm8960->lrclk;
+
+	if (lrclk == 0) {
+		lrclk = 48000;
+		dev_info(component->dev, "LRCLK is null using: %d\n", lrclk);
+	}
+	if (bclk == 0) {
+		bclk = 2304000;
+		dev_info(component->dev, "BCLK is null using: %d\n", bclk);
+	}
+
 	closest = freq_in;
 
 	best_freq_out = -EINVAL;
@@ -728,8 +738,11 @@ int wm8960_configure_pll(struct snd_soc_component *component, int freq_in,
 			freq_out = sysclk * sysclk_divs[i];
 
 			for (k = 0; k < ARRAY_SIZE(bclk_divs); ++k) {
-				if (!is_pll_freq_available(freq_in, freq_out))
+				if (!is_pll_freq_available(freq_in, freq_out)) {
+					dev_dbg(component->dev,"PLL frequency not available: freq_in=%d, freq_out=%d\n",
+						freq_in, freq_out);
 					continue;
+				}
 
 				diff = sysclk - bclk * bclk_divs[k] / 10;
 				if (diff == 0) {
@@ -738,6 +751,9 @@ int wm8960_configure_pll(struct snd_soc_component *component, int freq_in,
 					*bclk_idx = k;
 					return freq_out;
 				}
+				dev_dbg(component->dev,"found PLL configuration: sysclk=%d, lrclk=%d, bclk=%d\n",
+					sysclk, lrclk, bclk);
+
 				if (diff > 0 && closest > diff) {
 					*sysclk_idx = i;
 					*dac_idx = j;
@@ -810,7 +826,7 @@ static int wm8960_configure_clocking(struct snd_soc_component *component)
 		dev_warn(component->dev, "failed to configure clock via PLL, freq in: %d\n", freq_in);
 		return freq_out;
 	}
-	dev_info(component->dev, "Configure clock via PLL, freq in: %d, freq out: %d\n", freq_in, freq_out);
+	dev_dbg(component->dev, "Configure clock via PLL, freq in: %d, freq out: %d\n", freq_in, freq_out);
 	wm8960_set_pll(component, freq_in, freq_out);
 
 configure_clock:
@@ -865,6 +881,8 @@ static int wm8960_hw_params(struct snd_pcm_substream *substream,
 	}
 
 	wm8960->lrclk = params_rate(params);
+	dev_dbg(component->dev, "found clock configuration: lrclk=%d, bclk=%d\n",
+		 wm8960->lrclk, wm8960->bclk);
 	/* Update filters for the new rate */
 	if (tx) {
 		wm8960_set_deemph(component);
@@ -1422,6 +1440,9 @@ static void wm8960_set_pdata_from_of(struct i2c_client *i2c,
 
 	of_property_read_u32_array(np, "wlf,hp-cfg", pdata->hp_cfg,
 				   ARRAY_SIZE(pdata->hp_cfg));
+
+	of_property_read_u32(np, "default-pll-lrclk", &pdata->default_pll_lrclk);
+	of_property_read_u32(np, "default-pll-bclk", &pdata->default_pll_bclk);
 }
 
 static int wm8960_i2c_probe(struct i2c_client *i2c)
@@ -1501,6 +1522,9 @@ static int wm8960_i2c_probe(struct i2c_client *i2c)
 			goto bulk_disable;
 		}
 	}
+
+	wm8960->lrclk = wm8960->pdata.default_pll_lrclk;
+	wm8960->bclk = wm8960->pdata.default_pll_bclk;
 
 	/* Latch the update bits */
 	regmap_update_bits(wm8960->regmap, WM8960_LINVOL, 0x100, 0x100);
