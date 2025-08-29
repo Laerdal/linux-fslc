@@ -152,6 +152,9 @@ struct sgtl5000_priv {
 	u8 lrclk_strength;
 	u8 sclk_strength;
 	u16 mute_state[LAST_POWER_EVENT + 1];
+	bool micbias_always_on;
+	bool capless;
+	struct device *dev;
 };
 
 static inline int hp_sel_input(struct snd_soc_component *component)
@@ -180,10 +183,16 @@ static inline void restore_output(struct snd_soc_component *component,
 
 static void vag_power_on(struct snd_soc_component *component, u32 source)
 {
+	struct sgtl5000_priv *sgtl5000 = snd_soc_component_get_drvdata(component);
 	if (snd_soc_component_read(component, SGTL5000_CHIP_ANA_POWER) &
 	    SGTL5000_VAG_POWERUP)
 		return;
 
+	if (sgtl5000->capless) {
+		snd_soc_component_update_bits(component, SGTL5000_CHIP_ANA_POWER,
+			    SGTL5000_CAPLESS_HP_POWERUP, SGTL5000_CAPLESS_HP_POWERUP);
+		msleep(1);
+	}
 	snd_soc_component_update_bits(component, SGTL5000_CHIP_ANA_POWER,
 			    SGTL5000_VAG_POWERUP, SGTL5000_VAG_POWERUP);
 
@@ -225,6 +234,7 @@ static int vag_power_consumers(struct snd_soc_component *component,
 
 static void vag_power_off(struct snd_soc_component *component, u32 source)
 {
+	struct sgtl5000_priv *sgtl5000 = snd_soc_component_get_drvdata(component);
 	u16 ana_pwr = snd_soc_component_read(component,
 					     SGTL5000_CHIP_ANA_POWER);
 
@@ -252,6 +262,10 @@ static void vag_power_off(struct snd_soc_component *component, u32 source)
 	 * As longer we wait, as smaller pop we've got.
 	 */
 	msleep(SGTL5000_VAG_POWERDOWN_DELAY);
+	if (sgtl5000->capless)
+		snd_soc_component_update_bits(component, SGTL5000_CHIP_ANA_POWER,
+			    SGTL5000_CAPLESS_HP_POWERUP, 0);
+
 }
 
 /*
@@ -278,8 +292,10 @@ static int mic_bias_event(struct snd_soc_dapm_widget *w,
 		break;
 
 	case SND_SOC_DAPM_PRE_PMD:
-		snd_soc_component_update_bits(component, SGTL5000_CHIP_MIC_CTRL,
-				SGTL5000_BIAS_R_MASK, 0);
+		if (!sgtl5000->micbias_always_on)
+			snd_soc_component_update_bits(component,
+						      SGTL5000_CHIP_MIC_CTRL,
+						      SGTL5000_BIAS_R_MASK, 0);
 		break;
 	}
 	return 0;
@@ -703,6 +719,9 @@ static const DECLARE_TLV_DB_SCALE(avc_max_gain, 0, 600, 0);
 /* tlv for dap avc threshold, */
 static const DECLARE_TLV_DB_MINMAX(avc_threshold, 0, 9600);
 
+/* tlv for DAC */
+static const DECLARE_TLV_DB_SCALE(dac_volume, -9000, 50, 0);
+
 static const struct snd_kcontrol_new sgtl5000_snd_controls[] = {
 	/* SOC_DOUBLE_S8_TLV with invert */
 	{
@@ -713,6 +732,7 @@ static const struct snd_kcontrol_new sgtl5000_snd_controls[] = {
 		.info = dac_info_volsw,
 		.get = dac_get_volsw,
 		.put = dac_put_volsw,
+		.tlv.p = dac_volume,
 	},
 
 	SOC_DOUBLE("Capture Volume", SGTL5000_CHIP_ANA_ADC_CTRL, 0, 4, 0xf, 0),
@@ -1127,26 +1147,40 @@ static int sgtl5000_set_bias_level(struct snd_soc_component *component,
 {
 	struct sgtl5000_priv *sgtl = snd_soc_component_get_drvdata(component);
 	int ret;
+	enum snd_soc_bias_level old_level =
+		snd_soc_component_get_bias_level(component);
+	dev_dbg(sgtl->dev, "%s: %d -> %d\n", __func__, old_level, level);
 
-	switch (level) {
-	case SND_SOC_BIAS_ON:
-	case SND_SOC_BIAS_PREPARE:
-	case SND_SOC_BIAS_STANDBY:
-		regcache_cache_only(sgtl->regmap, false);
-		ret = regcache_sync(sgtl->regmap);
-		if (ret) {
-			regcache_cache_only(sgtl->regmap, true);
-			return ret;
-		}
-
-		snd_soc_component_update_bits(component, SGTL5000_CHIP_ANA_POWER,
-				    SGTL5000_REFTOP_POWERUP,
-				    SGTL5000_REFTOP_POWERUP);
-		break;
+	switch (old_level) {
 	case SND_SOC_BIAS_OFF:
-		regcache_cache_only(sgtl->regmap, true);
-		snd_soc_component_update_bits(component, SGTL5000_CHIP_ANA_POWER,
-				    SGTL5000_REFTOP_POWERUP, 0);
+		if (level != SND_SOC_BIAS_OFF) {
+			regcache_cache_only(sgtl->regmap, false);
+			ret = regcache_sync(sgtl->regmap);
+			if (ret) {
+				regcache_cache_only(sgtl->regmap, true);
+				return ret;
+			}
+		}
+		break;
+
+	case SND_SOC_BIAS_STANDBY:
+		switch (level) {
+		case SND_SOC_BIAS_PREPARE:
+			snd_soc_component_update_bits(component,
+						      SGTL5000_CHIP_ANA_POWER,
+						      SGTL5000_REFTOP_POWERUP,
+						      SGTL5000_REFTOP_POWERUP);
+			break;
+		case SND_SOC_BIAS_OFF:
+			regcache_cache_only(sgtl->regmap, true);
+			snd_soc_component_update_bits(component,
+						      SGTL5000_CHIP_ANA_POWER,
+						      SGTL5000_REFTOP_POWERUP,
+						      0);
+		default:
+			break;
+		}
+	default:
 		break;
 	}
 
@@ -1471,8 +1505,8 @@ static int sgtl5000_probe(struct snd_soc_component *component)
 	snd_soc_component_update_bits(component, SGTL5000_CHIP_REF_CTRL,
 				SGTL5000_SMALL_POP, SGTL5000_SMALL_POP);
 
-	/* disable short cut detector */
-	snd_soc_component_write(component, SGTL5000_CHIP_SHORT_CTRL, 0);
+	/* enable short cut detector */
+	snd_soc_component_write(component, SGTL5000_CHIP_SHORT_CTRL, 5);
 
 	snd_soc_component_write(component, SGTL5000_CHIP_DIG_POWER,
 			SGTL5000_ADC_EN | SGTL5000_DAC_EN);
@@ -1590,6 +1624,7 @@ static int sgtl5000_i2c_probe(struct i2c_client *client)
 	if (!sgtl5000)
 		return -ENOMEM;
 
+	sgtl5000->dev = &client->dev;
 	i2c_set_clientdata(client, sgtl5000);
 
 	ret = sgtl5000_enable_regulators(client);
@@ -1610,8 +1645,9 @@ static int sgtl5000_i2c_probe(struct i2c_client *client)
 		if (ret == -ENOENT)
 			ret = -EPROBE_DEFER;
 
-		dev_err_probe(&client->dev, ret, "Failed to get mclock\n");
-
+		if (ret != -EPROBE_DEFER)
+			dev_err(&client->dev, "Failed to get mclock: %d\n",
+				ret);
 		goto disable_regs;
 	}
 
@@ -1754,6 +1790,9 @@ static int sgtl5000_i2c_probe(struct i2c_client *client)
 		} else {
 			sgtl5000->micbias_voltage = 0;
 		}
+		sgtl5000->micbias_always_on =
+			of_property_read_bool(np, "micbias-always-on");
+		sgtl5000->capless = of_property_read_bool(np, "capless");
 	}
 
 	sgtl5000->lrclk_strength = I2S_LRCLK_STRENGTH_LOW;

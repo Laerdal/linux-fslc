@@ -517,7 +517,7 @@ config HX711
 
 config INA2XX_ADC
 	tristate "Texas Instruments INA2xx Power Monitors IIO driver"
-	depends on I2C && !SENSORS_INA2XX
+	depends on I2C
 	select REGMAP_I2C
 	select IIO_BUFFER
 	select IIO_KFIFO_BUF

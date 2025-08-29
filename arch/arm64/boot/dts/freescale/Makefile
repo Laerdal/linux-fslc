@@ -133,7 +133,10 @@ dtb-$(CONFIG_ARCH_MXC) += imx8mp-evk.dtb imx8mp-evk-rm67191.dtb imx8mp-evk-it626
 			  imx8mp-evk-iqaudio-dacplus.dtb imx8mp-evk-iqaudio-dacpro.dtb imx8mp-evk-hifiberry-dacplus.dtb \
 			  imx8mp-evk-hifiberry-dac2.dtb imx8mp-evk-hifiberry-dacplusadc.dtb \
 			  imx8mp-evk-usdhc1-m2.dtb imx8mp-evk-rm67199.dtb \
-			  imx8mp-evk-dpdk.dtb imx8mp-evk-8mic-swpdm.dtb imx8mp-evk-rpmsg-lpv.dtb imx8mp-evk-revA3-8mic-revE.dtb
+			  imx8mp-evk-dpdk.dtb imx8mp-evk-8mic-swpdm.dtb imx8mp-evk-rpmsg-lpv.dtb imx8mp-evk-revA3-8mic-revE.dtb \
+			  dr-cpum2-revB.dtb dr-cpum2.dtb dr-cpum2I-revB.dtb dr-imx8mp-evk-pcie-wifi.dtb \
+			  dr-imx8mp-evk-sdio-wifi.dtb dr-imx8mp-evk.dtb dr-linkbox2p-revB.dtb dr-linkbox2p-revC.dtb \
+			  dr-linkbox2p-soundslave.dtb dr-linkbox2p.dtb dr-simpad2p-revB.dtb dr-simpad2p-revC.dtb dr-simpad2p.dtb
 dtb-$(CONFIG_ARCH_MXC) += imx8mp-msc-sm2s-ep1.dtb
 dtb-$(CONFIG_ARCH_MXC) += imx8mp-phyboard-pollux-rdk.dtb
 dtb-$(CONFIG_ARCH_MXC) += imx8mp-ab2.dtb

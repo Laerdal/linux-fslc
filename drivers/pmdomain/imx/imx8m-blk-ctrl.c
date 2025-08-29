@@ -327,6 +327,20 @@ static int imx8m_blk_ctrl_probe(struct platform_device *pdev)
 		}
 
 		/*
+		 * Enforce suspend/resume ordering by making genpd power_dev a
+		 * provider of blk-ctrl. Genpd power_dev is suspended after and
+		 * resumed before blk-ctrl.
+		 */
+		if (!device_link_add(dev, domain->power_dev, DL_FLAG_STATELESS)) {
+			ret = -EINVAL;
+			dev_err_probe(dev, ret,
+				      "failed to link to %s\n", data->name);
+			pm_genpd_remove(&domain->genpd);
+			dev_pm_domain_detach(domain->power_dev, true);
+			goto cleanup_pds;
+		}
+
+		/*
 		 * We use runtime PM to trigger power on/off of the upstream GPC
 		 * domain, as a strict hierarchical parent/child power domain
 		 * setup doesn't allow us to meet the sequencing requirements.
@@ -367,6 +381,7 @@ cleanup_provider:
 	of_genpd_del_provider(dev->of_node);
 cleanup_pds:
 	for (i--; i >= 0; i--) {
+		device_link_remove(dev, bc->domains[i].power_dev);
 		pm_genpd_remove(&bc->domains[i].genpd);
 		dev_pm_domain_detach(bc->domains[i].power_dev, true);
 	}
@@ -386,6 +401,7 @@ static int imx8m_blk_ctrl_remove(struct platform_device *pdev)
 	for (i = 0; bc->onecell_data.num_domains; i++) {
 		struct imx8m_blk_ctrl_domain *domain = &bc->domains[i];
 
+		device_link_remove(&pdev->dev, domain->power_dev);
 		pm_genpd_remove(&domain->genpd);
 		dev_pm_domain_detach(domain->power_dev, true);
 	}

@@ -48,3 +48,11 @@ config BRCMFMAC_PCIE
 	  IEEE802.11ac embedded FullMAC WLAN driver. Say Y if you want to
 	  use the driver for an PCIE wireless card.
 
+config BRCMFMAC_NO_RSSI
+	bool "Bug in RSSI event reporting (43241)"
+	depends on BRCMFMAC
+	default n
+	help
+	  Some devices, notably old 43241 has a bogus RSSI report.
+	  This options prevents the report and companion error
+	  message.
