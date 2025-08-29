@@ -505,9 +505,9 @@ static int imx_wm8960_probe(struct platform_device *pdev)
 		goto cleanup;
 	}
 	codec_i2c = of_find_i2c_device_by_node(codec_np);
-	if (!codec_i2c) {
-		dev_dbg(&pdev->dev, "failed (%ld) to find codec platform device\n", PTR_ERR(codec_i2c));
-		ret = -EPROBE_DEFER;
+	if (!codec_i2c || !&codec_i2c->dev) {
+		dev_warn(&pdev->dev, "failed (%ld) to find codec platform device\n", PTR_ERR(codec_i2c));
+		ret = -ENODEV;
 		goto cleanup;
 	}
 

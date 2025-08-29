@@ -543,6 +543,9 @@
 		clocks = <&clks IMX6QDL_CLK_CKO>;
 		clock-names = "mclk";
 		wlf,shared-lrclk;
+		default-pll-lrclk = <48000>;
+		default-pll-bclk = <2304000>;
+		status = "okay";
 		DCVDD-supply = <&vgen4_reg>;
 		DBVDD-supply = <&vgen4_reg>;
 		AVDD-supply = <&sw2_reg>;
@@ -1115,7 +1118,7 @@
 			  <&clks IMX6QDL_CLK_ESAI_EXTAL>;
 	assigned-clock-parents = <&clks IMX6QDL_CLK_PLL4_POST_DIV>,
 				<&clks IMX6QDL_CLK_PLL4>, <&clks IMX6QDL_CLK_PLL4_AUDIO_DIV>;
-	assigned-clock-rates = <786432000>, <0>, <0>, <24576000>;
+	assigned-clock-rates = <737280000>, <0>, <0>, <24576000>;
 };
 
 &ssi2 {
