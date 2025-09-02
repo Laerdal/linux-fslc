@@ -566,6 +566,9 @@ struct dpaa2_eth_priv {
 	u8 ptp_correction_off;
 	struct dpaa2_eth_buf_pool *bp[DPAA2_ETH_MAX_BPS];
 	int num_bps;
+	void (*dpaa2_set_onestep_params_cb)(struct dpaa2_eth_priv *priv,
+					    u32 offset, u8 udp);
+	struct fsl_mc_device *dpbp_dev;
 	u16 rx_buf_size;
 	struct iommu_domain *iommu_domain;
 

@@ -38,9 +38,6 @@ MODULE_DESCRIPTION("Freescale DPAA2 Ethernet Driver");
 struct ptp_qoriq *dpaa2_ptp;
 EXPORT_SYMBOL(dpaa2_ptp);
 
-static void (*dpaa2_set_onestep_params_cb)(struct dpaa2_eth_priv *priv,
-					   u32 offset, u8 udp);
-
 static void dpaa2_eth_detect_features(struct dpaa2_eth_priv *priv)
 {
 	priv->features = 0;
@@ -50,13 +47,10 @@ static void dpaa2_eth_detect_features(struct dpaa2_eth_priv *priv)
 		priv->features |= DPAA2_ETH_FEATURE_ONESTEP_CFG_DIRECT;
 }
 
-static void dpaa2_update_ptp_onesestep_indirect(struct dpaa2_eth_priv *priv,
-						u32 offset, u8 udp)
+static void dpaa2_update_ptp_onestep_indirect(struct dpaa2_eth_priv *priv,
+					      u32 offset, u8 udp)
 {
 	struct dpni_single_step_cfg cfg;
-
-	if (priv->ptp_correction_off == offset)
-		return;
 
 	cfg.en = 1;
 	cfg.ch_update = udp;
@@ -65,19 +59,14 @@ static void dpaa2_update_ptp_onesestep_indirect(struct dpaa2_eth_priv *priv,
 
 	if (dpni_set_single_step_cfg(priv->mc_io, 0, priv->mc_token, &cfg))
 		WARN_ONCE(1, "Failed to set single step register");
-
-	priv->ptp_correction_off = offset;
 }
 
-static void dpaa2_update_ptp_onesestep_direct(struct dpaa2_eth_priv *priv,
-					      u32 offset, u8 udp)
+static void dpaa2_update_ptp_onestep_direct(struct dpaa2_eth_priv *priv,
+					    u32 offset, u8 udp)
 {
 	u32 val = 0;
 
-	if (priv->ptp_correction_off == offset)
-		return;
-
-	val =  DPAA2_PTP_SINGLE_STEP_ENABLE |
+	val = DPAA2_PTP_SINGLE_STEP_ENABLE |
 	       DPAA2_PTP_SINGLE_CORRECTION_OFF(offset);
 
 	if (udp)
@@ -85,36 +74,37 @@ static void dpaa2_update_ptp_onesestep_direct(struct dpaa2_eth_priv *priv,
 
 	if (priv->onestep_reg_base)
 		writel(val, priv->onestep_reg_base);
-
-	priv->ptp_correction_off = offset;
 }
 
 static void dpaa2_ptp_onestep_reg_update_method(struct dpaa2_eth_priv *priv)
 {
 	struct device *dev = priv->net_dev->dev.parent;
-	struct dpni_single_step_cfg ptp_cfg = {0};
+	struct dpni_single_step_cfg ptp_cfg;
 
-	dpaa2_set_onestep_params_cb = dpaa2_update_ptp_onesestep_indirect;
+	priv->dpaa2_set_onestep_params_cb = dpaa2_update_ptp_onestep_indirect;
 
 	if (!(priv->features & DPAA2_ETH_FEATURE_ONESTEP_CFG_DIRECT))
 		return;
 
-	if (dpni_get_single_step_cfg(priv->mc_io, 0, priv->mc_token, &ptp_cfg))
-		goto fallback;
+	if (dpni_get_single_step_cfg(priv->mc_io, 0,
+				     priv->mc_token, &ptp_cfg)) {
+		dev_err(dev, "dpni_get_single_step_cfg cannot retrieve onestep reg, falling back to indirect update\n");
+		return;
+	}
 
-	if (!ptp_cfg.ptp_onestep_reg_base)
-		goto fallback;
+	if (!ptp_cfg.ptp_onestep_reg_base) {
+		dev_err(dev, "1588 onestep reg not available, falling back to indirect update\n");
+		return;
+	}
 
-	priv->onestep_reg_base = ioremap(ptp_cfg.ptp_onestep_reg_base, sizeof(u32));
-	if (!priv->onestep_reg_base)
-		goto fallback;
+	priv->onestep_reg_base = ioremap(ptp_cfg.ptp_onestep_reg_base,
+					 sizeof(u32));
+	if (!priv->onestep_reg_base) {
+		dev_err(dev, "1588 onestep reg cannot be mapped, falling back to indirect update\n");
+		return;
+	}
 
-	dpaa2_set_onestep_params_cb = dpaa2_update_ptp_onesestep_direct;
-
-	return;
-
-fallback:
-	dev_err(dev, "1588 onestep reg not available, falling back to indirect update\n");
+	priv->dpaa2_set_onestep_params_cb = dpaa2_update_ptp_onestep_direct;
 }
 
 void *dpaa2_iova_to_virt(struct iommu_domain *domain,
@@ -873,7 +863,12 @@ static void dpaa2_eth_enable_tx_tstamp(struct dpaa2_eth_priv *priv,
 			htonl(origin_timestamp.sec_lsb);
 		*(__be32 *)(data + offset2 + 6) = htonl(origin_timestamp.nsec);
 
-		dpaa2_set_onestep_params_cb(priv, offset1, udp);
+		if (priv->ptp_correction_off == offset1)
+			return;
+
+		priv->dpaa2_set_onestep_params_cb(priv, offset1, udp);
+		priv->ptp_correction_off = offset1;
+
 	}
 }
 
@@ -3938,6 +3933,7 @@ static int dpaa2_eth_setup_rx_flow(struct dpaa2_eth_priv *priv,
 					 MEM_TYPE_PAGE_ORDER0, NULL);
 	if (err) {
 		dev_err(dev, "xdp_rxq_info_reg_mem_model failed\n");
+		xdp_rxq_info_unreg(&fq->channel->xdp_rxq);
 		return err;
 	}
 
@@ -4431,17 +4427,25 @@ static int dpaa2_eth_bind_dpni(struct dpaa2_eth_priv *priv)
 			return -EINVAL;
 		}
 		if (err)
-			return err;
+			goto out;
 	}
 
 	err = dpni_get_qdid(priv->mc_io, 0, priv->mc_token,
 			    DPNI_QUEUE_TX, &priv->tx_qdid);
 	if (err) {
 		dev_err(dev, "dpni_get_qdid() failed\n");
-		return err;
+		goto out;
 	}
 
 	return 0;
+
+out:
+	while (i--) {
+		if (priv->fq[i].type == DPAA2_RX_FQ &&
+		    xdp_rxq_info_is_reg(&priv->fq[i].channel->xdp_rxq))
+			xdp_rxq_info_unreg(&priv->fq[i].channel->xdp_rxq);
+	}
+	return err;
 }
 
 /* Allocate rings for storing incoming frame descriptors */
@@ -4800,6 +4804,17 @@ static void dpaa2_eth_del_ch_napi(struct dpaa2_eth_priv *priv)
 	}
 }
 
+static void dpaa2_eth_free_rx_xdp_rxq(struct dpaa2_eth_priv *priv)
+{
+	int i;
+
+	for (i = 0; i < priv->num_fqs; i++) {
+		if (priv->fq[i].type == DPAA2_RX_FQ &&
+		    xdp_rxq_info_is_reg(&priv->fq[i].channel->xdp_rxq))
+			xdp_rxq_info_unreg(&priv->fq[i].channel->xdp_rxq);
+	}
+}
+
 static int dpaa2_eth_probe(struct fsl_mc_device *dpni_dev)
 {
 	struct device *dev;
@@ -5021,6 +5036,7 @@ err_alloc_percpu_extras:
 	free_percpu(priv->percpu_stats);
 err_alloc_percpu_stats:
 	dpaa2_eth_del_ch_napi(priv);
+	dpaa2_eth_free_rx_xdp_rxq(priv);
 err_bind:
 	dpaa2_eth_free_dpbps(priv);
 err_dpbp_setup:
@@ -5070,6 +5086,7 @@ static int dpaa2_eth_remove(struct fsl_mc_device *ls_dev)
 	free_percpu(priv->percpu_extras);
 
 	dpaa2_eth_del_ch_napi(priv);
+	dpaa2_eth_free_rx_xdp_rxq(priv);
 	dpaa2_eth_free_dpbps(priv);
 	dpaa2_eth_free_dpio(priv);
 	dpaa2_eth_free_dpni(priv);
