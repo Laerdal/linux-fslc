@@ -1043,16 +1043,27 @@ static void dwc3_set_power_down_clk_scale(struct dwc3 *dwc)
 	 * The power down scale field specifies how many suspend_clk
 	 * periods fit into a 16KHz clock period. When performing
 	 * the division, round up the remainder.
+	 *
+	 * The power down scale value is calculated using the fastest
+	 * frequency of the suspend_clk. If it isn't fixed (but within
+	 * the accuracy requirement), the driver may not know the max
+	 * rate of the suspend_clk, so only update the power down scale
+	 * if the default is less than the calculated value from
+	 * clk_get_rate() or if the default is questionably high
+	 * (3x or more) to be within the requirement.
 	 */
 	suspend_clk = of_clk_get_by_name(node, "suspend");
 	if (IS_ERR(suspend_clk))
 		return;
 
-	scale = DIV_ROUND_UP(clk_get_rate(suspend_clk), 16384);
+	scale = DIV_ROUND_UP(clk_get_rate(suspend_clk), 16000);
 	reg = dwc3_readl(dwc->regs, DWC3_GCTL);
-	reg &= ~(DWC3_GCTL_PWRDNSCALE_MASK);
-	reg |= DWC3_GCTL_PWRDNSCALE(scale);
-	dwc3_writel(dwc->regs, DWC3_GCTL, reg);
+	if ((reg & DWC3_GCTL_PWRDNSCALE_MASK) < DWC3_GCTL_PWRDNSCALE(scale) ||
+	    (reg & DWC3_GCTL_PWRDNSCALE_MASK) > DWC3_GCTL_PWRDNSCALE(scale * 3)) {
+		reg &= ~(DWC3_GCTL_PWRDNSCALE_MASK);
+		reg |= DWC3_GCTL_PWRDNSCALE(scale);
+		dwc3_writel(dwc->regs, DWC3_GCTL, reg);
+	}
 }
 
 #ifdef CONFIG_OF
@@ -1122,8 +1133,6 @@ static int dwc3_core_init(struct dwc3 *dwc)
 	 */
 	dwc3_writel(dwc->regs, DWC3_GUID, LINUX_VERSION_CODE);
 
-	dwc3_set_power_down_clk_scale(dwc);
-
 	ret = dwc3_phy_setup(dwc);
 	if (ret)
 		goto err0;
@@ -1169,6 +1178,9 @@ static int dwc3_core_init(struct dwc3 *dwc)
 	ret = dwc3_setup_scratch_buffers(dwc);
 	if (ret)
 		goto err1;
+
+	/* Set power down scale of suspend_clk */
+	dwc3_set_power_down_clk_scale(dwc);
 
 	/* Adjust Frame Length */
 	dwc3_frame_length_adjustment(dwc);
