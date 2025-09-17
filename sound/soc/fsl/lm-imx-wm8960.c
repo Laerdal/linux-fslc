@@ -383,21 +383,20 @@ static int imx_wm8960_jack_init(struct imx_wm8960_data *data)
 	return ret;
 }
 
-static int imx_wm8960_late_probe(struct snd_soc_card *card)
+static int imx_sp_audio_dai_init(struct snd_soc_pcm_runtime *rtd)
 {
 	int ret;
-	struct imx_wm8960_data *data = snd_soc_card_get_drvdata(card);
-	struct snd_soc_pcm_runtime *rtd = list_first_entry(
-		&card->rtd_list, struct snd_soc_pcm_runtime, list);
+	struct imx_wm8960_data *data = snd_soc_card_get_drvdata(rtd->card);
 	struct snd_soc_dai *codec_dai = asoc_rtd_to_codec(rtd, 0);
+	struct device *dev = rtd->card->dev;
 
 	if (data->board_info->cpu_type == CPUTYPE_IMX6) {
-		dev_info(&data->pdev->dev, "%s: codec clock is %d\n", __func__, data->clk_frequency);
+ 		dev_info(dev, "%s: codec clock is %d\n", __func__, data->clk_frequency);
 		ret = snd_soc_dai_set_sysclk(codec_dai, WM8960_SYSCLK_PLL,
 					     data->clk_frequency,
 					     SND_SOC_CLOCK_IN);
 		if (ret < 0) {
-			dev_err(&data->pdev->dev,
+			dev_err(dev,
 				"failed to set codec sysclk: %d\n", ret);
 			return ret;
 		}
@@ -405,7 +404,7 @@ static int imx_wm8960_late_probe(struct snd_soc_card *card)
 
 	ret = imx_wm8960_jack_init(data);
 	if (ret < 0) {
-		dev_err(&data->pdev->dev,
+		dev_err(dev,
 			"failed to init jack: %d\n", ret);
 	}
 
@@ -578,6 +577,7 @@ static int imx_wm8960_probe(struct platform_device *pdev)
 	data->dai.cpus->of_node = cpu_np;
 	data->dai.platforms->of_node = cpu_np;
 	data->dai.ops = &imx_wm896x_card_ops;
+	data->dai.init = &imx_sp_audio_dai_init;
 
 	if (board_info->cpu_type == CPUTYPE_IMX6)	/* 8960 is master*/
 		data->dai.dai_fmt = SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF | SND_SOC_DAIFMT_CBP_CFP;
@@ -598,7 +598,6 @@ static int imx_wm8960_probe(struct platform_device *pdev)
 	}
 	data->card.num_links = 1;
 	data->card.dai_link = &data->dai;
-	data->card.late_probe = imx_wm8960_late_probe;
 	if (strncmp(data->card.name, "cpu-module", 10) == 0) {
 		data->card.dapm_widgets = cpum_dapm_widgets;
 		data->card.num_dapm_widgets = ARRAY_SIZE(cpum_dapm_widgets);
@@ -614,14 +613,12 @@ static int imx_wm8960_probe(struct platform_device *pdev)
 	ret = devm_snd_soc_register_card(&pdev->dev, &data->card);
 	if (ret) {
 		dev_err_probe(&pdev->dev, ret, "snd_soc_register_card failed\n");
-		goto put_device;
+		goto fail;
 	}
 
 	goto cleanup;
 
-put_device:
-	put_device(&pdev->dev);
-//fail:
+fail:
 	if (data && !IS_ERR(data->codec_clk))
 		clk_put(data->codec_clk);
 
@@ -630,7 +627,6 @@ cleanup:
 		of_node_put(cpu_np);
 	if (codec_np)
 		of_node_put(codec_np);
-
 	return ret;
 }
 
