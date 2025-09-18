@@ -372,6 +372,11 @@
 		clock-names = "mclk";
 		wlf,shared-lrclk;
 		wlf,capless;
+		DCVDD-supply = <&vgen4_reg>;
+		DBVDD-supply = <&sw2_reg>;
+		AVDD-supply = <&sw2_reg>;
+		SPKVDD1-supply = <&sw2_reg>;
+		SPKVDD2-supply = <&sw2_reg>;
 	   };
 
 };
