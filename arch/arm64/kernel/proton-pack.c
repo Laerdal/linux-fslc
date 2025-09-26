@@ -882,65 +882,82 @@ enum mitigation_state arm64_get_spectre_bse_state(void)
  * This must be called with SCOPE_LOCAL_CPU for each type of CPU, before any
  * SCOPE_SYSTEM call will give the right answer.
  */
-u8 spectre_bhb_loop_affected(int scope)
+static bool is_spectre_bhb_safe(int scope)
 {
-	u8 k = 0;
-	static u8 max_bhb_k;
+	static const struct midr_range spectre_bhb_safe_list[] = {
+		MIDR_ALL_VERSIONS(MIDR_CORTEX_A35),
+		MIDR_ALL_VERSIONS(MIDR_CORTEX_A53),
+		MIDR_ALL_VERSIONS(MIDR_CORTEX_A55),
+		MIDR_ALL_VERSIONS(MIDR_CORTEX_A510),
+		MIDR_ALL_VERSIONS(MIDR_CORTEX_A520),
+		MIDR_ALL_VERSIONS(MIDR_BRAHMA_B53),
+		MIDR_ALL_VERSIONS(MIDR_QCOM_KRYO_2XX_SILVER),
+		MIDR_ALL_VERSIONS(MIDR_QCOM_KRYO_3XX_SILVER),
+		MIDR_ALL_VERSIONS(MIDR_QCOM_KRYO_4XX_SILVER),
+		{},
+	};
+	static bool all_safe = true;
 
-	if (scope == SCOPE_LOCAL_CPU) {
-		static const struct midr_range spectre_bhb_k32_list[] = {
-			MIDR_ALL_VERSIONS(MIDR_CORTEX_A78),
-			MIDR_ALL_VERSIONS(MIDR_CORTEX_A78AE),
-			MIDR_ALL_VERSIONS(MIDR_CORTEX_A78C),
-			MIDR_ALL_VERSIONS(MIDR_CORTEX_X1),
-			MIDR_ALL_VERSIONS(MIDR_CORTEX_A710),
-			MIDR_ALL_VERSIONS(MIDR_CORTEX_X2),
-			MIDR_ALL_VERSIONS(MIDR_NEOVERSE_N2),
-			MIDR_ALL_VERSIONS(MIDR_NEOVERSE_V1),
-			{},
-		};
-		static const struct midr_range spectre_bhb_k24_list[] = {
-			MIDR_ALL_VERSIONS(MIDR_CORTEX_A76),
-			MIDR_ALL_VERSIONS(MIDR_CORTEX_A77),
-			MIDR_ALL_VERSIONS(MIDR_NEOVERSE_N1),
-			{},
-		};
-		static const struct midr_range spectre_bhb_k11_list[] = {
-			MIDR_ALL_VERSIONS(MIDR_AMPERE1),
-			{},
-		};
-		static const struct midr_range spectre_bhb_k8_list[] = {
-			MIDR_ALL_VERSIONS(MIDR_CORTEX_A72),
-			MIDR_ALL_VERSIONS(MIDR_CORTEX_A57),
-			{},
-		};
+	if (scope != SCOPE_LOCAL_CPU)
+		return all_safe;
 
-		if (is_midr_in_range_list(read_cpuid_id(), spectre_bhb_k32_list))
-			k = 32;
-		else if (is_midr_in_range_list(read_cpuid_id(), spectre_bhb_k24_list))
-			k = 24;
-		else if (is_midr_in_range_list(read_cpuid_id(), spectre_bhb_k11_list))
-			k = 11;
-		else if (is_midr_in_range_list(read_cpuid_id(), spectre_bhb_k8_list))
-			k =  8;
+	if (is_midr_in_range_list(read_cpuid_id(), spectre_bhb_safe_list))
+		return true;
 
-		max_bhb_k = max(max_bhb_k, k);
-	} else {
-		k = max_bhb_k;
-	}
+	all_safe = false;
 
-	return k;
+	return false;
 }
 
-static enum mitigation_state
-spectre_bhb_get_cpu_fw_mitigation_state(enum bhb_mitigation_bits fw_wa)
+static u8 spectre_bhb_loop_affected(void)
+{
+u8 k = 0;
+
+	static const struct midr_range spectre_bhb_k32_list[] = {
+		MIDR_ALL_VERSIONS(MIDR_CORTEX_A78),
+		MIDR_ALL_VERSIONS(MIDR_CORTEX_A78AE),
+		MIDR_ALL_VERSIONS(MIDR_CORTEX_A78C),
+		MIDR_ALL_VERSIONS(MIDR_CORTEX_X1),
+		MIDR_ALL_VERSIONS(MIDR_CORTEX_A710),
+		MIDR_ALL_VERSIONS(MIDR_CORTEX_X2),
+		MIDR_ALL_VERSIONS(MIDR_NEOVERSE_N2),
+		MIDR_ALL_VERSIONS(MIDR_NEOVERSE_V1),
+		{},
+	};
+	static const struct midr_range spectre_bhb_k24_list[] = {
+		MIDR_ALL_VERSIONS(MIDR_CORTEX_A76),
+		MIDR_ALL_VERSIONS(MIDR_CORTEX_A77),
+		MIDR_ALL_VERSIONS(MIDR_NEOVERSE_N1),
+		MIDR_ALL_VERSIONS(MIDR_QCOM_KRYO_4XX_GOLD),
+		{},
+	};
+	static const struct midr_range spectre_bhb_k11_list[] = {
+		MIDR_ALL_VERSIONS(MIDR_AMPERE1),
+		{},
+	};
+	static const struct midr_range spectre_bhb_k8_list[] = {
+		MIDR_ALL_VERSIONS(MIDR_CORTEX_A72),
+		MIDR_ALL_VERSIONS(MIDR_CORTEX_A57),
+		{},
+	};
+
+	if (is_midr_in_range_list(read_cpuid_id(), spectre_bhb_k32_list))
+		k = 32;
+	else if (is_midr_in_range_list(read_cpuid_id(), spectre_bhb_k24_list))
+		k = 24;
+	else if (is_midr_in_range_list(read_cpuid_id(), spectre_bhb_k11_list))
+		k = 11;
+	else if (is_midr_in_range_list(read_cpuid_id(), spectre_bhb_k8_list))
+		k =  8;
+
+return k;
+}
+
+static enum mitigation_state spectre_bhb_get_cpu_fw_mitigation_state(void)
 {
 	int ret;
 	struct arm_smccc_res res;
 	u64 imm = ARM_SMCCC_ARCH_WORKAROUND_3;
-
-	if (fw_wa == BHB_FW_WA1)
-		imm = ARM_SMCCC_ARCH_WORKAROUND_1;
 
 	arm_smccc_1_1_invoke(ARM_SMCCC_ARCH_FEATURES_FUNC_ID, imm, &res);
 
@@ -961,10 +978,9 @@ spectre_bhb_get_cpu_fw_mitigation_state(enum bhb_mitigation_bits fw_wa)
  * For a core affected by BSE, get the WA3 state and handle the 'unaffected'
  * case from unaware firmware.
  */
-static enum mitigation_state
-spectre_bse_get_cpu_fw_mitigation_state(enum bhb_mitigation_bits fw_wa)
+static enum mitigation_state spectre_bse_get_cpu_fw_mitigation_state(void)
 {
-	enum mitigation_state state = spectre_bhb_get_cpu_fw_mitigation_state(fw_wa);
+	enum mitigation_state state = spectre_bhb_get_cpu_fw_mitigation_state();
 
 	switch (state) {
 	case SPECTRE_MITIGATED:
@@ -998,13 +1014,14 @@ static bool is_spectre_bhb_fw_affected(int scope)
 	if (scope != SCOPE_LOCAL_CPU)
 		return system_affected;
 
-	fw_state = spectre_bhb_get_cpu_fw_mitigation_state(BHB_FW_WA3);
+	fw_state = spectre_bhb_get_cpu_fw_mitigation_state();
 	if (cpu_in_list || (has_smccc && fw_state == SPECTRE_MITIGATED)) {
 		system_affected = true;
 		return true;
 	}
 
-	return false;
+    return false;
+
 }
 
 static bool supports_ecbhb(int scope)
@@ -1020,6 +1037,8 @@ static bool supports_ecbhb(int scope)
 						    ID_AA64MMFR1_EL1_ECBHB_SHIFT);
 }
 
+static u8 max_bhb_k;
+
 bool is_spectre_bhb_affected(const struct arm64_cpu_capabilities *entry,
 			     int scope)
 {
@@ -1028,16 +1047,18 @@ bool is_spectre_bhb_affected(const struct arm64_cpu_capabilities *entry,
 	if (supports_csv2p3(scope))
 		return false;
 
-	if (supports_clearbhb(scope))
-		return true;
+	if (is_spectre_bhb_safe(scope))
+		return false;
 
-	if (spectre_bhb_loop_affected(scope))
-		return true;
+	/*
+	 * At this point the core isn't known to be "safe" so we're going to
+	 * assume it's vulnerable. We still need to update `max_bhb_k` though,
+	 * but only if we aren't mitigating with clearbhb though.
+	 */
+	if (scope == SCOPE_LOCAL_CPU && !supports_clearbhb(SCOPE_LOCAL_CPU))
+		max_bhb_k = max(max_bhb_k, spectre_bhb_loop_affected());
 
-	if (is_spectre_bhb_fw_affected(scope))
-		return true;
-
-	return false;
+	return true;
 }
 
 static bool is_spectre_bse_affected(int scope)
@@ -1097,7 +1118,8 @@ static int __init parse_spectre_bse_param(char *str)
 }
 early_param("spectre_bse", parse_spectre_bse_param);
 
-static void spectre_bhb_enable_fw_mitigation(enum bhb_mitigation_bits fw_wa)
+static void spectre_bhb_enable_fw_mitigation(void)
+
 {
 	bp_hardening_cb_t cpu_cb;
 	struct bp_hardening_data *data = this_cpu_ptr(&bp_hardening_data);
@@ -1122,7 +1144,7 @@ static void spectre_bhb_enable_fw_mitigation(enum bhb_mitigation_bits fw_wa)
 	if (__this_cpu_read(bp_hardening_data.fn) != cpu_cb)
 		__this_cpu_write(bp_hardening_data.fn, NULL);
 
-	set_bit(fw_wa, &system_bhb_mitigations);
+	set_bit(BHB_FW_WA3, &system_bhb_mitigations);
 }
 
 static void spectre_bhb_enable_loop_mitigation(void)
@@ -1172,7 +1194,7 @@ void spectre_bhb_enable_mitigation(const struct arm64_cpu_capabilities *entry)
 		this_cpu_set_vectors(EL1_VECTOR_BHB_CLEAR_INSN);
 		state = SPECTRE_MITIGATED;
 		set_bit(BHB_INSN, &system_bhb_mitigations);
-	} else if (spectre_bhb_loop_affected(SCOPE_LOCAL_CPU)) {
+	} else if (spectre_bhb_loop_affected()) {
 		/* Cores also affected by BSE are special cased later */
 		if (!is_spectre_bse_affected(SCOPE_LOCAL_CPU)) {
 			spectre_bhb_enable_loop_mitigation();
@@ -1181,9 +1203,9 @@ void spectre_bhb_enable_mitigation(const struct arm64_cpu_capabilities *entry)
 			bse_upgrade_loop_mitigation = true;
 		}
 	} else if (is_spectre_bhb_fw_affected(SCOPE_LOCAL_CPU)) {
-		fw_state = spectre_bhb_get_cpu_fw_mitigation_state(BHB_FW_WA3);
+		fw_state = spectre_bhb_get_cpu_fw_mitigation_state();
 		if (fw_state == SPECTRE_MITIGATED) {
-			spectre_bhb_enable_fw_mitigation(BHB_FW_WA3);
+			spectre_bhb_enable_fw_mitigation();
 			state = SPECTRE_MITIGATED;
 
 			if (is_spectre_bse_affected(SCOPE_LOCAL_CPU))
@@ -1193,7 +1215,7 @@ void spectre_bhb_enable_mitigation(const struct arm64_cpu_capabilities *entry)
 
 	/* Spectre BSE needs to upgrade the BHB mitigation to use firmware */
 	if (bse_upgrade_loop_mitigation) {
-		bse_state = spectre_bse_get_cpu_fw_mitigation_state(BHB_FW_WA1);
+		bse_state = spectre_bse_get_cpu_fw_mitigation_state();
 		if (bse_state == SPECTRE_MITIGATED && __spectre_bse) {
 			/*
 			 * For affected cores the firmware implementions of WA1
@@ -1202,7 +1224,7 @@ void spectre_bhb_enable_mitigation(const struct arm64_cpu_capabilities *entry)
 			 * WA3 with the branchy-loop, which is not sufficient.
 			 * Use the WA1 call instead.
 			 */
-			spectre_bhb_enable_fw_mitigation(BHB_FW_WA1);
+			spectre_bhb_enable_fw_mitigation();
 			state = SPECTRE_MITIGATED;
 			bse_state = SPECTRE_MITIGATED;
 		} else {
@@ -1246,7 +1268,6 @@ void noinstr spectre_bhb_patch_loop_iter(struct alt_instr *alt,
 {
 	u8 rd;
 	u32 insn;
-	u16 loop_count = spectre_bhb_loop_affected(SCOPE_SYSTEM);
 
 	BUG_ON(nr_inst != 1); /* MOV -> MOV */
 
@@ -1255,7 +1276,7 @@ void noinstr spectre_bhb_patch_loop_iter(struct alt_instr *alt,
 
 	insn = le32_to_cpu(*origptr);
 	rd = aarch64_insn_decode_register(AARCH64_INSN_REGTYPE_RD, insn);
-	insn = aarch64_insn_gen_movewide(rd, loop_count, 0,
+	insn = aarch64_insn_gen_movewide(rd, max_bhb_k, 0,
 					 AARCH64_INSN_VARIANT_64BIT,
 					 AARCH64_INSN_MOVEWIDE_ZERO);
 	*updptr++ = cpu_to_le32(insn);
