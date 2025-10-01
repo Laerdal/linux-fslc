@@ -371,6 +371,11 @@ static int qoriq_tmu_suspend(struct device *dev)
 		if (ret)
 			return ret;
 	}
+	if (data->ver > TMU_VER1) {
+		ret = regmap_set_bits(data->regmap, REGS_TMR, TMR_CMD);
+		if (ret)
+			return ret;
+	}
 
 	clk_disable_unprepare(data->clk);
 
@@ -388,6 +393,11 @@ static int qoriq_tmu_resume(struct device *dev)
 
 	if (data->ver == TMU_VER93) {
 		ret = regmap_update_bits(data->regmap, REGS_TMR, TMR_CMD, 0);
+		if (ret)
+			return ret;
+	}
+	if (data->ver > TMU_VER1) {
+		ret = regmap_clear_bits(data->regmap, REGS_TMR, TMR_CMD);
 		if (ret)
 			return ret;
 	}

@@ -282,7 +282,7 @@ static int io_prep_rw(struct io_kiocb *req, const struct io_uring_sqe *sqe,
 
 	rw->addr = READ_ONCE(sqe->addr);
 	rw->len = READ_ONCE(sqe->len);
-	rw->flags = READ_ONCE(sqe->rw_flags);
+	rw->flags = (__force rwf_t) READ_ONCE(sqe->rw_flags);
 	return io_prep_rw_setup(req, ddir, do_import);
 }
 
@@ -1190,12 +1190,12 @@ int io_do_iopoll(struct io_ring_ctx *ctx, bool force_nonspin)
 			poll_flags |= BLK_POLL_ONESHOT;
 
 		/* iopoll may have completed current req */
-		if (!rq_list_empty(iob.req_list) ||
+		if (!rq_list_empty(&iob.req_list) ||
 		    READ_ONCE(req->iopoll_completed))
 			break;
 	}
 
-	if (!rq_list_empty(iob.req_list))
+	if (!rq_list_empty(&iob.req_list))
 		iob.complete(&iob);
 	else if (!pos)
 		return 0;
