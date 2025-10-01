@@ -948,6 +948,7 @@ static int caam_probe(struct platform_device *pdev)
 
 		imx_soc_data = imx_soc_match->data;
 		reg_access = reg_access && imx_soc_data->page0_access;
+		ctrlpriv->no_page0 = !reg_access;
 		/*
 		 * CAAM clocks cannot be controlled from kernel.
 		 */
