@@ -983,6 +983,7 @@ BIT2:1 STRENGTH x1,x2,x4,x6
 
 /* USB-C */
 &usb3_phy1 {
+	vbus-supply = <&pmic_3v3>;
 	fsl,phy-tx-vref-tune = <0xe>;
 	fsl,phy-tx-preemp-amp-tune = <3>;
 	fsl,phy-tx-vboost-level = <5>;
@@ -1007,6 +1008,8 @@ BIT2:1 STRENGTH x1,x2,x4,x6
 	role-switch-default-mode = "device";
 	snps,dis-u1-entry-quirk;
 	snps,dis-u2-entry-quirk;
+	snps,dis_u3_susphy_quirk;
+	snps,dis_enblslpm_quirk;
 	status = "okay";
 
 	port {
