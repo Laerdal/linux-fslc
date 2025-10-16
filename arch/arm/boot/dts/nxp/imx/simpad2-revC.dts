@@ -525,8 +525,8 @@
 		compatible = "eeti,egalax_ts";
 		reg = <0x4>;
 		interrupt-parent = <&gpio7>;
-		interrupts = <13 2>;
-		wakeup-gpios = <&gpio7 13 0>;
+		interrupts = <13 IRQ_TYPE_LEVEL_LOW>;
+		wakeup-gpios = <&gpio7 13 IRQ_TYPE_NONE>;
 		disable-suspend = <1>;
 		status = "okay";
 		};
