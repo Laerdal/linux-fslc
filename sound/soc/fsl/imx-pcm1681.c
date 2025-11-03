@@ -72,7 +72,8 @@ static const struct snd_soc_dapm_route audio_map_1681[] = {
 
 };
 
-static int imx_pcm1681_hw_param(struct snd_pcm_substream *substream, struct snd_pcm_hw_params *params)
+static int imx_pcm1681_hw_param(struct snd_pcm_substream *substream,
+					struct snd_pcm_hw_params *params)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_soc_dai *codec_dai = asoc_rtd_to_codec(rtd, 0);
@@ -84,8 +85,23 @@ static int imx_pcm1681_hw_param(struct snd_pcm_substream *substream, struct snd_
 	int slotw = 32;
 	u32 width = snd_pcm_format_width(params_format(params));
 	unsigned int clock_freq = 0;
+	u32 codec_dai_format = SND_SOC_DAIFMT_LEFT_J | SND_SOC_DAIFMT_NB_NF | SND_SOC_DAIFMT_CBS_CFS;
+
+	ret = snd_soc_dai_set_fmt(codec_dai, codec_dai_format);
+	if (ret) {
+		dev_err(rtd->dev, "failed to set codec dai fmt: %d\n", ret);
+		return ret;
+	}
+	ret = snd_soc_dai_set_fmt(cpu_dai, codec_dai_format);
+	if (ret) {
+		dev_err(rtd->dev, "failed to set cpu dai fmt: %d\n", ret);
+		return ret;
+	}
+
 	switch (ch) {
 	case 2:
+	case 4:
+	case 6:
 		switch (sample_format) {
 		case SNDRV_PCM_FORMAT_S16_LE:
 			clock_freq = sample_rate * 32;
@@ -99,37 +115,35 @@ static int imx_pcm1681_hw_param(struct snd_pcm_substream *substream, struct snd_
 			return -EINVAL;
 			break;
 		}
-		snd_soc_dai_set_tdm_slot(cpu_dai, 0, 0, 0, 0);
-		snd_soc_dai_set_tdm_slot(codec_dai, 0, 0, 0, 0);
+
 		break;
 	case 8:
 		if (width >= 24) {
 			clock_freq = sample_rate * 256;
 		} else {
-			dev_err(rtd->dev, "%s: only S24_LE and S32_LE supported for TDM, was %d\n", __func__,
-				sample_format);
+			dev_err(rtd->dev, "%s: only S24_LE and S32_LE supported for TDM, was %d\n", __func__, sample_format);
 			return -EINVAL;
-		}
-		ret = snd_soc_dai_set_tdm_slot(cpu_dai, (1 << ch) - 1, 0x0, ch, slotw);
-		if (ret) {
-			dev_err(rtd->dev, "%s: failed to set cpu tdm fmt: %d\n", __func__, ret);
-			return ret;
-		}
-
-		ret = snd_soc_dai_set_tdm_slot(codec_dai, (1 << ch) - 1, 0x0, ch, slotw);
-		if (ret) {
-			dev_err(rtd->dev, "%s: failed to set codec tdm fmt: %d\n", __func__, ret);
-			return ret;
 		}
 		break;
 	default:
 
-		dev_err(rtd->dev, "%s: 2 or 8 channels must be used\n", __func__);
+		dev_err(rtd->dev, "%s: 2,4,6,8 channels must be used\n", __func__);
 		return -EINVAL;
 		break;
 	}
 
-	dev_dbg(rtd->dev, "%s: SAI clock is %d, rate is %d\n", __func__, clock_freq, sample_rate);
+	dev_dbg(rtd->dev, "%s: SAI clock is %d\n", __func__, clock_freq);
+	ret = snd_soc_dai_set_tdm_slot(cpu_dai, (1 << ch) - 1, 0x0, ch, slotw);
+	if (ret) {
+		dev_err(rtd->dev, "%s: failed to set cpu tdm fmt: %d\n", __func__, ret);
+		return ret;
+	}
+
+	ret = snd_soc_dai_set_tdm_slot(codec_dai, (1 << ch) - 1, 0x0, ch, slotw);
+	if (ret) {
+		dev_err(rtd->dev, "%s: failed to set codec tdm fmt: %d\n", __func__, ret);
+		return ret;
+	}
 
 	return 0;
 }
@@ -217,6 +231,7 @@ static int imx_pcm1681_probe(struct platform_device *pdev)
 	struct imx_pcm1681_data *data;
 	struct clk *codec_clk;
 	int ret;
+
 	const struct of_device_id *of_id = of_match_device(imx_pcm1681_dt_ids, &pdev->dev);
 	const struct board_variant *board_info = of_id ? (struct board_variant*)of_id->data : NULL;
 	if (!board_info) {
