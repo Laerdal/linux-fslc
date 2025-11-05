@@ -86,13 +86,14 @@ static int imx_pcm1681_hw_param(struct snd_pcm_substream *substream,
 	u32 width = snd_pcm_format_width(params_format(params));
 	unsigned int clock_freq = 0;
 	u32 codec_dai_format = SND_SOC_DAIFMT_LEFT_J | SND_SOC_DAIFMT_NB_NF | SND_SOC_DAIFMT_CBS_CFS;
+	u32 cpu_codec_dai_format = SND_SOC_DAIFMT_LEFT_J | SND_SOC_DAIFMT_NB_NF | SND_SOC_DAIFMT_BP_FP;
 
 	ret = snd_soc_dai_set_fmt(codec_dai, codec_dai_format);
 	if (ret) {
 		dev_err(rtd->dev, "failed to set codec dai fmt: %d\n", ret);
 		return ret;
 	}
-	ret = snd_soc_dai_set_fmt(cpu_dai, codec_dai_format);
+	ret = snd_soc_dai_set_fmt(cpu_dai, cpu_codec_dai_format);
 	if (ret) {
 		dev_err(rtd->dev, "failed to set cpu dai fmt: %d\n", ret);
 		return ret;
@@ -191,15 +192,15 @@ static int imx_pcm1681_late_probe(struct snd_soc_card *card)
 	case CPUTYPE_IMX6:
 		dev_info(card->dev, "Set ESAI clk to %d\n", data->clk_frequency);
 		ret = snd_soc_dai_set_sysclk(cpu_dai, ESAI_HCKT_EXTAL,
-					     data->clk_frequency,
-					     SND_SOC_CLOCK_IN);
+						data->clk_frequency,
+						SND_SOC_CLOCK_IN);
 		break;
 
 	case CPUTYPE_IMX8:
 		dev_info(card->dev, "Set SAI mclk to %d\n", data->clk_frequency);
 		ret = snd_soc_dai_set_sysclk(cpu_dai, FSL_SAI_CLK_MAST1,
-					     data->clk_frequency,
-					     SND_SOC_CLOCK_OUT);
+						data->clk_frequency,
+						SND_SOC_CLOCK_OUT);
 		break;
 
 	default:
@@ -300,7 +301,7 @@ static int imx_pcm1681_probe(struct platform_device *pdev)
 
 	data->dai.ops = &imx_hifi_ops;
 	data->dai.dai_fmt = SND_SOC_DAIFMT_LEFT_J | SND_SOC_DAIFMT_NB_IF |
-			    SND_SOC_DAIFMT_CBS_CFS;
+				SND_SOC_DAIFMT_CBS_CFS;
 
 	data->card.dev = &pdev->dev;
 	ret = snd_soc_of_parse_card_name(&data->card, "model");
