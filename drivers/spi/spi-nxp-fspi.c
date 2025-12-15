@@ -1312,6 +1312,7 @@ static const struct spi_controller_mem_caps nxp_fspi_mem_caps = {
 
 static const struct spi_controller_mem_caps nxp_fspi_mem_caps_quirks = {
 	.dtr = false,
+	.per_op_freq = true,
 };
 
 static int nxp_fspi_probe(struct platform_device *pdev)
