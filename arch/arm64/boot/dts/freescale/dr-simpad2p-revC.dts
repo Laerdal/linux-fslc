@@ -185,6 +185,8 @@
 		audio-cpu = <&sai3>;
 		audio-codec = <&sgtl5000>;
 		SPKAMP-supply = <&reg_spk>;
+		hp-det-gpios = <&gpio4 27 GPIO_ACTIVE_HIGH>;
+		mic-det-gpios = <&gpio5 5 GPIO_ACTIVE_HIGH>;
 		audio-routing =
 			"Headphone Jack", "HP_OUT",
 			"AMIC", "Mic Bias",
