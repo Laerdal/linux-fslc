@@ -573,6 +573,11 @@ static int imx_sp2_audio_probe(struct platform_device *pdev)
 		goto cleanup;
 	}
 	if (data->board_info->iphone_jack && !IS_ERR_OR_NULL(data->iioc)) {
+		/* Force Mic Bias on for IIO current-based detection */
+		snd_soc_dapm_force_enable_pin(&data->card.dapm, "Mic Bias");
+		snd_soc_dapm_sync(&data->card.dapm);
+		dev_info(&pdev->dev, "Mic Bias forced on for IIO detection\n");
+
 		queue_delayed_work(system_power_efficient_wq, &data->mic_work,
 				   msecs_to_jiffies(500));
 	}
