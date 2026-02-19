@@ -278,7 +278,7 @@ static int imx_sp2_hpjack_status_check(void *priv)
 {
 	struct imx_sp2_audio_data *data = priv;
 	int hp_status, ret=0;
-	if (IS_ERR(data->options.hp_gpio))
+	if (!data->options.hp_gpio)
 		return 0;
 	hp_status = gpiod_get_value(data->options.hp_gpio);
 
@@ -296,7 +296,7 @@ static int imx_sp2_micjack_status_check(void *priv)
 {
 	struct imx_sp2_audio_data *data = priv;
 	int mic_status, ret=0;
-	if (IS_ERR(data->options.mic_gpio))
+	if (!data->options.mic_gpio)
 		return 0;
 
 	mic_status = gpiod_get_value(data->options.mic_gpio);
@@ -322,7 +322,7 @@ static int imx_sp2_audio_jack_init(struct imx_sp2_audio_data *data)
 {
 	int ret;
 	dev_dbg(&data->pdev->dev, "jack init\n");
-	if (!IS_ERR(data->options.hp_gpio)) {
+	if (data->options.hp_gpio) {
 		imx_hp_jack_gpio[0].data = data;
 		imx_hp_jack_gpio[0].desc = data->options.hp_gpio;
 		imx_hp_jack_gpio[0].jack_status_check = imx_sp2_hpjack_status_check;
@@ -348,7 +348,7 @@ static int imx_sp2_audio_jack_init(struct imx_sp2_audio_data *data)
 		data->options.hp_attr = true;
 		data->options.mic_attr = true;
 	}
-	if (!IS_ERR(data->options.mic_gpio)) {
+	if (data->options.mic_gpio) {
 		imx_mic_jack_gpio[0].data = data;
 		imx_mic_jack_gpio[0].desc = data->options.mic_gpio;
 		imx_mic_jack_gpio[0].jack_status_check = imx_sp2_micjack_status_check;
@@ -493,14 +493,18 @@ static int imx_sp2_audio_probe(struct platform_device *pdev)
 	clk_put(codec_clk);
 	dev_info(&pdev->dev, "%s: codec clock is %d\n", __func__, data->clk_frequency);
 
-	data->options.hp_gpio = devm_gpiod_get(&pdev->dev, "hp-det", GPIOD_IN);
+	data->options.hp_gpio = devm_gpiod_get_optional(&pdev->dev, "hp-det", GPIOD_IN);
 	if (IS_ERR(data->options.hp_gpio)) {
-		dev_err(&pdev->dev, "%s: Failed to get 'hp-det-gpios' gpio", __func__);
+		ret = PTR_ERR(data->options.hp_gpio);
+		dev_err_probe(&pdev->dev, ret, "Failed to get 'hp-det-gpios' gpio\n");
+		goto cleanup;
 	}
 
-	data->options.mic_gpio = devm_gpiod_get(&pdev->dev, "mic-det", GPIOD_IN);
+	data->options.mic_gpio = devm_gpiod_get_optional(&pdev->dev, "mic-det", GPIOD_IN);
 	if (IS_ERR(data->options.mic_gpio)) {
-		dev_err(&pdev->dev, "%s: Failed to get 'mic-det-gpios' gpio", __func__);
+		ret = PTR_ERR(data->options.mic_gpio);
+		dev_err_probe(&pdev->dev, ret, "Failed to get 'mic-det-gpios' gpio\n");
+		goto cleanup;
 	}
 
 	INIT_DELAYED_WORK(&data->mic_work, imx_sp2_audio_read_bias_work);
@@ -574,7 +578,7 @@ static int imx_sp2_audio_probe(struct platform_device *pdev)
 		queue_delayed_work(system_power_efficient_wq, &data->mic_work,
 				   msecs_to_jiffies(500));
 	}
-	return 0;
+	ret = 0;
 cleanup:
 	if (cpu_pdev)
 		put_device(&cpu_pdev->dev);
