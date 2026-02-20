@@ -1516,7 +1516,9 @@ static struct platform_driver bcm_driver = {
 	},
 };
 
+#if IS_ENABLED(CONFIG_BRCMFMAC)
 extern int brcmf_sdio_fw_ready(void);
+#endif
 
 static int bcm_serdev_probe(struct serdev_device *serdev)
 {
@@ -1525,11 +1527,13 @@ static int bcm_serdev_probe(struct serdev_device *serdev)
 		device_get_match_data(&serdev->dev);
 	int err;
 
+#if IS_ENABLED(CONFIG_BRCMFMAC)
 	if (data && data->wait_for_wifi && !brcmf_sdio_fw_ready()) {
 		dev_info(&serdev->dev, "Deferring until wifi ready\n");
 		return -EPROBE_DEFER;
 	}
 	dev_info(&serdev->dev, "Wifi ready\n");
+#endif
 	bcmdev = devm_kzalloc(&serdev->dev, sizeof(*bcmdev), GFP_KERNEL);
 	if (!bcmdev)
 		return -ENOMEM;
