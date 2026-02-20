@@ -483,7 +483,7 @@ err_dwmac_init:
 	return ret;
 }
 
-void imx_dwmac_remove(struct platform_device *pdev)
+static void imx_dwmac_remove(struct platform_device *pdev)
 {
 	struct imx_priv_data *bsp_priv = get_stmmac_bsp_priv(&pdev->dev);
 	stmmac_dvr_remove(&pdev->dev);

@@ -769,14 +769,13 @@ cleanup:
 	return ret;
 }
 
-static int lm_pmu_lb_remove(struct platform_device *pdev)
+static void lm_pmu_lb_remove(struct platform_device *pdev)
 {
 	struct lbp_priv *priv = platform_get_drvdata(pdev);
 	sysfs_remove_group(&priv->ps_dcin->dev.kobj, &bat_sysfs_attr_group);
 	sysfs_remove_file(&priv->ps_manikin[0]->dev.kobj, &dev_attr_amp5w_enable.attr);
 	sysfs_remove_file(&priv->ps_manikin[1]->dev.kobj, &dev_attr_amp1w_enable.attr);
 	put_device(&priv->i2c_adapter->dev);
-	return 0;
 }
 
 static void lm_pmu_lb_shutdown(struct platform_device *pdev)
@@ -794,7 +793,7 @@ static struct platform_driver linkbox_plus_psy_driver = {
 		.of_match_table = linkbox_plus_psy_dt_ids,
 	},
 	.probe = linkbox_plus_psy_probe,
-	.remove = lm_pmu_lb_remove,
+	.remove_new = lm_pmu_lb_remove,
 	.shutdown = lm_pmu_lb_shutdown,
 };
 

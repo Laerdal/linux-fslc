@@ -169,11 +169,10 @@ deref:
 	return status;
 }
 
-static int fmux_remove(struct platform_device *pdev)
+static void fmux_remove(struct platform_device *pdev)
 {
 	sysfs_remove_file(&pdev->dev.kobj, &dev_attr_select.attr);
 	sysfs_remove_file(&pdev->dev.kobj, &dev_attr_possible.attr);
-	return 0;
 }
 
 static struct of_device_id fmux_of_match[] = {
@@ -193,7 +192,7 @@ static struct platform_driver fmux_driver = {
 		.of_match_table = fmux_of_match,
 	},
 	.probe = fmux_probe,
-	.remove = fmux_remove,
+	.remove_new = fmux_remove,
 };
 
 module_platform_driver(fmux_driver);

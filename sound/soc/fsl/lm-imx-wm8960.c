@@ -33,6 +33,7 @@
 #include <linux/gpio.h>
 #include <linux/clk.h>
 #include <linux/delay.h>
+#include <linux/property.h>
 #include <sound/soc.h>
 #include <sound/jack.h>
 #include <sound/control.h>
@@ -389,7 +390,7 @@ static int imx_wm8960_late_probe(struct snd_soc_card *card)
 	struct imx_wm8960_data *data = snd_soc_card_get_drvdata(card);
 	struct snd_soc_pcm_runtime *rtd = list_first_entry(
 		&card->rtd_list, struct snd_soc_pcm_runtime, list);
-	struct snd_soc_dai *codec_dai = asoc_rtd_to_codec(rtd, 0);
+	struct snd_soc_dai *codec_dai = snd_soc_rtd_to_codec(rtd, 0);
 
 	if (data->board_info->cpu_type == CPUTYPE_IMX6) {
 		dev_info(&data->pdev->dev, "%s: codec clock is %d\n", __func__, data->clk_frequency);
@@ -445,8 +446,7 @@ static int imx_wm8960_probe(struct platform_device *pdev)
 	struct imx_wm8960_data *data;
 	int ret;
 	int int_port, ext_port;
-	const struct of_device_id *of_id = of_match_device(imx_wm8960_dt_ids, &pdev->dev);
-	const struct board_variant *board_info = of_id ? (struct board_variant*)of_id->data : NULL;
+	const struct board_variant *board_info = device_get_match_data(&pdev->dev);
 	if (!board_info) {
 		return -ENODATA;
 	}
@@ -634,7 +634,7 @@ cleanup:
 	return ret;
 }
 
-static int imx_wm8960_remove(struct platform_device *pdev)
+static void imx_wm8960_remove(struct platform_device *pdev)
 {
 	struct snd_soc_card *card = platform_get_drvdata(pdev);
 	struct imx_wm8960_data *data = snd_soc_card_get_drvdata(card);
@@ -644,8 +644,6 @@ static int imx_wm8960_remove(struct platform_device *pdev)
 		device_remove_file(&pdev->dev, &dev_attr_headphone);
 	if (!IS_ERR(data->codec_clk))
 		clk_put(data->codec_clk);
-
-	return 0;
 }
 
 
@@ -659,7 +657,7 @@ static struct platform_driver lm_imx_wm8960_driver = {
 		.of_match_table = imx_wm8960_dt_ids,
 	},
 	.probe = imx_wm8960_probe,
-	.remove = imx_wm8960_remove,
+	.remove_new = imx_wm8960_remove,
 };
 module_platform_driver(lm_imx_wm8960_driver);
 

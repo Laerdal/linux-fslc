@@ -111,13 +111,13 @@ static int modulated_pwm_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int modulated_pwm_remove(struct platform_device *pdev)
+static void modulated_pwm_remove(struct platform_device *pdev)
 {
 	struct backlight_device *bl = platform_get_drvdata(pdev);
 	struct modulated_pwm_data *pb = dev_get_drvdata(&bl->dev);
 	sysfs_remove_file(&pdev->dev.kobj, &dev_attr_period.attr);
 	pwm_disable(pb->pwm);
-	return 0;
+
 }
 
 static struct of_device_id modulated_pwm_of_match[] = {
@@ -137,7 +137,7 @@ static struct platform_driver modulated_pwm_driver = {
 		.of_match_table = of_match_ptr(modulated_pwm_of_match),
 	},
 	.probe = modulated_pwm_probe,
-	.remove = modulated_pwm_remove,
+	.remove_new = modulated_pwm_remove,
 };
 
 module_platform_driver(modulated_pwm_driver);

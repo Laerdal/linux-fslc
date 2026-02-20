@@ -11,6 +11,7 @@
  */
 #include <linux/module.h>
 #include <linux/of_platform.h>
+#include <linux/property.h>
 #include <linux/i2c.h>
 #include <linux/slab.h>
 #include <linux/clk.h>
@@ -76,8 +77,8 @@ static int imx_pcm1681_hw_param(struct snd_pcm_substream *substream,
 					struct snd_pcm_hw_params *params)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
-	struct snd_soc_dai *codec_dai = asoc_rtd_to_codec(rtd, 0);
-	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(rtd, 0);
+	struct snd_soc_dai *codec_dai = snd_soc_rtd_to_codec(rtd, 0);
+	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
 	unsigned int sample_rate = params_rate(params);
 	unsigned ch = params_channels(params);
 	snd_pcm_format_t sample_format = params_format(params);
@@ -186,7 +187,7 @@ static int imx_pcm1681_late_probe(struct snd_soc_card *card)
 	struct imx_pcm1681_data *data = snd_soc_card_get_drvdata(card);
 	struct snd_soc_pcm_runtime *rtd = list_first_entry(
 		&card->rtd_list, struct snd_soc_pcm_runtime, list);
-	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(rtd, 0);
+	struct snd_soc_dai *cpu_dai = snd_soc_rtd_to_cpu(rtd, 0);
 
 	switch (data->board_info->cpu_type) {
 	case CPUTYPE_IMX6:
@@ -233,8 +234,7 @@ static int imx_pcm1681_probe(struct platform_device *pdev)
 	struct clk *codec_clk;
 	int ret;
 
-	const struct of_device_id *of_id = of_match_device(imx_pcm1681_dt_ids, &pdev->dev);
-	const struct board_variant *board_info = of_id ? (struct board_variant*)of_id->data : NULL;
+	const struct board_variant *board_info = device_get_match_data(&pdev->dev);
 	if (!board_info) {
 		return -ENODATA;
 	}
@@ -339,9 +339,8 @@ cleanup:
 	return ret;
 }
 
-static int imx_pcm1681_remove(struct platform_device *pdev)
+static void imx_pcm1681_remove(struct platform_device *pdev)
 {
-	return 0;
 }
 
 
@@ -354,7 +353,7 @@ static struct platform_driver imx_pcm1681_driver = {
 		.of_match_table = imx_pcm1681_dt_ids,
 	},
 	.probe = imx_pcm1681_probe,
-	.remove = imx_pcm1681_remove,
+	.remove_new = imx_pcm1681_remove,
 };
 module_platform_driver(imx_pcm1681_driver);
 

@@ -217,7 +217,7 @@ put_role_sw:
 	return ret;
 }
 
-static int usb_tusb321_remove(struct platform_device *pdev)
+static void usb_tusb321_remove(struct platform_device *pdev)
 {
 	struct usb_tusb321_info *info = platform_get_drvdata(pdev);
 
@@ -227,8 +227,6 @@ static int usb_tusb321_remove(struct platform_device *pdev)
 		regulator_disable(info->vbus);
 
 	usb_role_switch_put(info->role_sw);
-
-	return 0;
 }
 
 static int __maybe_unused usb_tusb321_suspend(struct device *dev)
@@ -270,7 +268,7 @@ MODULE_DEVICE_TABLE(of, usb_tusb321_dt_match);
 
 static struct platform_driver usb_tusb321_driver = {
 	.probe		= usb_tusb321_probe,
-	.remove		= usb_tusb321_remove,
+	.remove_new	= usb_tusb321_remove,
 	.driver		= {
 		.name	= "usb-tusb321",
 		.pm	= &usb_tusb321_pm_ops,

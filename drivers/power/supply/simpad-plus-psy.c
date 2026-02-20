@@ -241,7 +241,7 @@ static int simpad_plus_psy_probe(struct platform_device *pdev)
 
 	psy_cfg.drv_data = priv;
 	priv->pdev = pdev;
-	priv->of_id = of_match_device(simpad_plus_psy_dt_ids, &pdev->dev);
+	priv->of_id = of_match_node(simpad_plus_psy_dt_ids, pdev->dev.of_node);
 	if (!priv->of_id) {
 		dev_err(&pdev->dev, "No OF data available\n");
 		return -EINVAL;
@@ -277,11 +277,10 @@ cleanup:
 	return ret;
 }
 
-static int lm_pmu_sp_remove(struct platform_device *pdev)
+static void lm_pmu_sp_remove(struct platform_device *pdev)
 {
 	struct sbp_priv *priv = platform_get_drvdata(pdev);
 	sysfs_remove_group(&priv->ps_dcin->dev.kobj, priv->of_id->data);
-	return 0;
 }
 
 static void lm_pmu_sp_shutdown(struct platform_device *pdev)
@@ -295,7 +294,7 @@ static struct platform_driver simpad_plus_psy_driver = {
 		.of_match_table = simpad_plus_psy_dt_ids,
 	},
 	.probe = simpad_plus_psy_probe,
-	.remove = lm_pmu_sp_remove,
+	.remove_new = lm_pmu_sp_remove,
 	.shutdown = lm_pmu_sp_shutdown,
 };
 

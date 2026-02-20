@@ -16,6 +16,7 @@
 #include <linux/gpio/consumer.h>
 #include <linux/clk.h>
 #include <linux/delay.h>
+#include <linux/property.h>
 #include <sound/soc.h>
 #include <sound/jack.h>
 #include <sound/control.h>
@@ -389,7 +390,7 @@ static int imx_sp2_audio_dai_init(struct snd_soc_pcm_runtime *rtd)
 	struct device *dev = rtd->card->dev;
 	int ret;
 
-	ret = snd_soc_dai_set_sysclk(asoc_rtd_to_codec(rtd, 0), SGTL5000_SYSCLK,
+	ret = snd_soc_dai_set_sysclk(snd_soc_rtd_to_codec(rtd, 0), SGTL5000_SYSCLK,
 				     data->clk_frequency, SND_SOC_CLOCK_IN);
 	if (ret) {
 		dev_err(dev, "could not set codec driver clock params\n");
@@ -397,7 +398,7 @@ static int imx_sp2_audio_dai_init(struct snd_soc_pcm_runtime *rtd)
 	}
 
 	if (!data->board_info->codec_master) {
-		ret = snd_soc_dai_set_sysclk(asoc_rtd_to_cpu(rtd, 0),
+		ret = snd_soc_dai_set_sysclk(snd_soc_rtd_to_cpu(rtd, 0),
 					     FSL_SAI_CLK_MAST1,
 					     data->clk_frequency,
 					     SND_SOC_CLOCK_OUT);
@@ -414,7 +415,7 @@ static int imx_sp2_audio_dai_init(struct snd_soc_pcm_runtime *rtd)
 static int imx_sp2_audio_hw_params(struct snd_pcm_substream *substream,
 				struct snd_pcm_hw_params *params)
 {
-	struct snd_soc_pcm_runtime *rtd = asoc_substream_to_rtd(substream);
+	struct snd_soc_pcm_runtime *rtd = snd_soc_substream_to_rtd(substream);
 	struct imx_sp2_audio_data *data = snd_soc_card_get_drvdata(rtd->card);
 	dev_dbg(rtd->card->dev, "Rate is %d\n", params_rate(params));
 	return 0;
@@ -441,8 +442,8 @@ static int imx_sp2_audio_probe(struct platform_device *pdev)
 	struct imx_sp2_audio_data *data;
 	struct clk *codec_clk=0;
 	int ret;
-	const struct of_device_id *of_id = of_match_device(imx_sp2_audio_dt_ids, &pdev->dev);
-	const struct board_variant *board_info = of_id ? (struct board_variant*)of_id->data : NULL;
+	
+	const struct board_variant *board_info = device_get_match_data(&pdev->dev);
 	if (!board_info) {
 		return -ENODATA;
 	}
@@ -592,7 +593,7 @@ cleanup:
 	return ret;
 }
 
-static int imx_sp2_audio_remove(struct platform_device *pdev)
+static void imx_sp2_audio_remove(struct platform_device *pdev)
 {
 	struct snd_soc_card *card = platform_get_drvdata(pdev);
 	struct imx_sp2_audio_data *data = snd_soc_card_get_drvdata(card);
@@ -600,7 +601,7 @@ static int imx_sp2_audio_remove(struct platform_device *pdev)
 		device_remove_file(&pdev->dev, &dev_attr_microphone);
 	if (data->options.hp_attr)
 		device_remove_file(&pdev->dev, &dev_attr_headphone);
-	return 0;
+
 }
 
 void imx_sp2_audio_shutdown(struct platform_device *pdev)
@@ -622,7 +623,7 @@ static struct platform_driver lm_imx_sp2_audio_driver = {
 		.of_match_table = imx_sp2_audio_dt_ids,
 	},
 	.probe = imx_sp2_audio_probe,
-	.remove = imx_sp2_audio_remove,
+	.remove_new = imx_sp2_audio_remove,
 	.shutdown = imx_sp2_audio_shutdown,
 };
 module_platform_driver(lm_imx_sp2_audio_driver);
