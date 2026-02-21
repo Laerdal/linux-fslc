@@ -17,7 +17,7 @@
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/rtc.h>
-#include <linux/pm_wakeirq.h>
+#include <linux/pm.h>
 
 #define RV8803_I2C_TRY_COUNT		4
 
@@ -708,9 +708,6 @@ static int rv8803_probe(struct i2c_client *client)
 			client->irq = 0;
 		} else {
 			device_init_wakeup(&client->dev, true);
-			err = dev_pm_set_wake_irq(&client->dev, client->irq);
-			if (err)
-				dev_err(&client->dev, "failed to set wake IRQ\n");
 		}
 	} else {
 		if (device_property_read_bool(&client->dev, "wakeup-source"))
