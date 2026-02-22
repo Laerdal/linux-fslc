@@ -42,7 +42,8 @@ static const struct ci_hdrc_imx_platform_flag imx28_usb_data = {
 static const struct ci_hdrc_imx_platform_flag imx6q_usb_data = {
 	.flags = CI_HDRC_SUPPORTS_RUNTIME_PM |
 		CI_HDRC_TURN_VBUS_EARLY_ON |
-		CI_HDRC_DISABLE_STREAMING,
+		CI_HDRC_DISABLE_STREAMING |
+		CI_HDRC_HAS_PORTSC_PEC_MISSED,
 };
 
 static const struct ci_hdrc_imx_platform_flag imx6sl_usb_data = {
