@@ -190,7 +190,6 @@ static const struct regmap_config fsl_ssi_regconfig = {
 	.val_bits = 32,
 	.reg_stride = 4,
 	.val_format_endian = REGMAP_ENDIAN_NATIVE,
-	.num_reg_defaults_raw = REG_SSI_SACCDIS / sizeof(uint32_t) + 1,
 	.readable_reg = fsl_ssi_readable_reg,
 	.volatile_reg = fsl_ssi_volatile_reg,
 	.precious_reg = fsl_ssi_precious_reg,
@@ -1545,8 +1544,6 @@ static int fsl_ssi_probe(struct platform_device *pdev)
 	if (ssi->soc->imx21regs) {
 		/* No SACC{ST,EN,DIS} regs in imx21-class SSI */
 		regconfig.max_register = REG_SSI_SRMSK;
-		regconfig.num_reg_defaults_raw =
-			REG_SSI_SRMSK / sizeof(uint32_t) + 1;
 	}
 
 	if (ssi->has_ipg_clk_name)
@@ -1602,8 +1599,10 @@ static int fsl_ssi_probe(struct platform_device *pdev)
 
 	if (ssi->soc->imx) {
 		ret = fsl_ssi_imx_probe(pdev, ssi, iomem);
-		if (ret)
+		if (ret) {
+			pm_runtime_disable(&pdev->dev);
 			return ret;
+		}
 	}
 
 	if (fsl_ssi_is_ac97(ssi)) {
@@ -1672,6 +1671,8 @@ error_ac97_ops:
 	if (ssi->soc->imx)
 		fsl_ssi_imx_clean(pdev, ssi);
 
+	pm_runtime_disable(&pdev->dev);
+
 	return ret;
 }
 
@@ -1694,6 +1695,8 @@ static void fsl_ssi_remove(struct platform_device *pdev)
 		snd_soc_set_ac97_ops(NULL);
 		mutex_destroy(&ssi->ac97_reg_lock);
 	}
+
+	pm_runtime_disable(&pdev->dev);
 }
 
 static int fsl_ssi_runtime_resume(struct device *dev)

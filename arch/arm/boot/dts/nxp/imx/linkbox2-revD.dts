@@ -94,6 +94,7 @@
 			regulator-always-on;
 		};
 
+/*
 		reg_wifi_en: wifi_enable {
 			compatible = "regulator-fixed";
 			regulator-name = "reg_wifi_enable";
@@ -106,7 +107,6 @@
 			regulator-always-on;
 		};
 
-/*
 		reg_bt_en: bt_enable {
 			compatible = "regulator-fixed";
 			regulator-name = "reg_bt_enable";
@@ -119,6 +119,12 @@
 			regulator-always-on;
 		};
 */
+	};
+
+	wifi_pwrseq: wifi-pwrseq {
+		compatible = "mmc-pwrseq-simple";
+		reset-gpios = <&gpio2 3 GPIO_ACTIVE_LOW>;
+		post-power-on-delay-ms = <200>;
 	};
 
 	pwm-manikin {
@@ -672,8 +678,8 @@
 				MX6QDL_PAD_DISP0_DAT2__GPIO4_IO23   0x80000000      /* BAT2_CHP_L2  */
 				MX6QDL_PAD_DISP0_DAT4__GPIO4_IO25   0x80000000      /* AC5W_SD */
 				MX6QDL_PAD_DISP0_DAT5__GPIO4_IO26   0x00000878      /* MCU_RST (OD) */
-				MX6QDL_PAD_DISP0_DAT6__GPIO4_IO27   0x80000000      /* MCU_BOOT0 */
-				MX6QDL_PAD_DISP0_DAT7__GPIO4_IO28   0x80000000      /* MCU_BOOT1 */
+				MX6QDL_PAD_DISP0_DAT6__GPIO4_IO27   0x80003030      /* MCU_BOOT0 (SION, 100K pull-down, DSE=6) */
+				MX6QDL_PAD_DISP0_DAT7__GPIO4_IO28   0x80003030      /* MCU_BOOT1 (SION, 100K pull-down, DSE=6) */
 				MX6QDL_PAD_DISP0_DAT8__GPIO4_IO29   0x80000000      /* BOOST_12V_EN */
 				MX6QDL_PAD_DISP0_DAT10__GPIO4_IO31  0x0001b000      /* BAT1_DET_N */
 				MX6QDL_PAD_DISP0_DAT11__GPIO5_IO05  0x0001b000      /* BAT2_DET_N */
@@ -995,6 +1001,8 @@
 &uart3 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart3>;
+	/delete-property/ dmas;
+	/delete-property/ dma-names;
 	status = "okay";
 };
 
@@ -1057,6 +1065,7 @@
 	/delete-property/ enable-sdio-wakeup;
 	status = "okay";
 	pm-ignore-notify;
+	mmc-pwrseq = <&wifi_pwrseq>;
 	vmmc-supply = <&sw2_reg>;
 	vqmmc-supply = <&vgen4_reg>;
 	voltage-ranges = <1800 3300>;

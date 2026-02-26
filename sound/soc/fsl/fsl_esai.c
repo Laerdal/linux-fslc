@@ -1118,14 +1118,14 @@ static int fsl_esai_probe(struct platform_device *pdev)
 	 */
 	ret = imx_pcm_dma_init(pdev);
 	if (ret) {
-		dev_err(&pdev->dev, "failed to init imx pcm dma: %d\n", ret);
+		dev_err_probe(&pdev->dev, ret, "failed to init imx pcm dma\n");
 		goto err_pm_get_sync;
 	}
 
 	ret = devm_snd_soc_register_component(&pdev->dev, &fsl_esai_component,
 					      &fsl_esai_dai, 1);
 	if (ret) {
-		dev_err(&pdev->dev, "failed to register DAI: %d\n", ret);
+		dev_err_probe(&pdev->dev, ret, "failed to register DAI\n");
 		goto err_pm_get_sync;
 	}
 
