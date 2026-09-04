@@ -20,6 +20,13 @@
 		mmc1 = &usdhc4;
 	};
 
+	wifi_pwrseq: wifi-pwrseq {
+		compatible = "mmc-pwrseq-simple";
+		reset-gpios = <&gpio6 7 GPIO_ACTIVE_HIGH>;
+		post-power-on-delay-ms = <10>;
+		power-off-delay-us = <10000>;
+	};
+
 	memory {
 		reg = <0x10000000 0x20000000>;
 	};
@@ -894,6 +901,7 @@
 };
 
 &usdhc4 {
+	mmc-pwrseq = <&wifi_pwrseq>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usdhc4 &pinctrl_wifi1>;
 	bus-width = <4>;
