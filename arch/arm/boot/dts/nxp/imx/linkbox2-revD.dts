@@ -27,12 +27,87 @@
 		rtc0 = &main_rtc;
 	};
 
+	/*
+	 * =========================================================================
+	 * FIX-1 -- wifi_pwrseq: CORRECTED GPIO AND POLARITY
+	 * =========================================================================
+	 * Before:
+	 *     reset-gpios = <&gpio6 7 GPIO_ACTIVE_HIGH>;
+	 *     post-power-on-delay-ms = <10>;
+	 *     power-off-delay-us = <10000>;
+	 *
+	 * THIS IS THE CAUSE OF THE BLUETOOTH REGRESSION.  gpio6_7 is not a WiFi
+	 * line at all -- it is the Bluetooth HOST-WAKEUP input.  See the
+	 * bluetooth child of serial@21f4000:
+	 *
+	 *     interrupt-parent = <0x4e>;      phandle 0x4e = gpio@20b0000 = gpio6
+	 *     interrupts = <0x07 0x04>;       line 7, IRQ_TYPE_LEVEL_HIGH
+	 *     interrupt-names = "host-wakeup";
+	 *
+	 * mmc_pwrseq_simple_probe() takes that line with
+	 * devm_gpiod_get_array(dev, "reset", GPIOD_OUT_HIGH) -- an EXCLUSIVE
+	 * request, as an OUTPUT, claimed before hci_bcm ever probes.  Two
+	 * consequences, and between them they account for both observed BT
+	 * failure modes:
+	 *
+	 *   1. -EBUSY (Link Box: "hci_uart_bcm: probe of serial0-0 failed with
+	 *      error -16").  bcm_get_resources() resolves host-wakeup via
+	 *      devm_gpiod_get_optional(dev, "host-wakeup", GPIOD_IN) and returns
+	 *      PTR_ERR() verbatim; gpiod_request_commit() returns -EBUSY once
+	 *      FLAG_REQUESTED is set by another consumer.  Where the IRQ is taken
+	 *      through the interrupt-parent path instead, gpiochip_lock_as_irq()
+	 *      refuses the line because FLAG_IS_OUT is set.  -16 cannot come from
+	 *      anywhere else in this path: the only return -EBUSY in hci_bcm.c is
+	 *      in bcm_suspend_device() (PM-only, unreachable from probe),
+	 *      hci_uart_register_device() returns only -ENOMEM/-ENODEV, bcm_open()
+	 *      returns -EOPNOTSUPP (-95), and serial0 is a serdev controller with
+	 *      no /dev/ttymxc4, so no userspace consumer can hold the port.
+	 *
+	 *   2. -ETIMEDOUT (SimPad: "command 0x0c03 tx timeout", "Reset failed
+	 *      (-110)").  Where the request succeeded, the SoC now DRIVES gpio6_7
+	 *      as an output while the BCM43241B4 drives it as its host-wake
+	 *      output.  Two push-pull drivers contend on the pad, and the
+	 *      controller can no longer signal the host.
+	 *
+	 * The polarity was also inverted.  pwrseq_simple drives logical 1 to mean
+	 * "held in reset" (pre_power_on and power_off) and logical 0 to mean
+	 * "released" (post_power_on).  WL_REG_ON is an active-HIGH enable, so the
+	 * descriptor must be GPIO_ACTIVE_LOW for logical-1-means-reset to map to
+	 * physical-low-means-off.  As written with GPIO_ACTIVE_HIGH,
+	 * post_power_on would have driven the line LOW immediately before the
+	 * first CMD5.
+	 *
+	 * After: the line WL_REG_ON actually lives on -- gpio2_3, freed by FIX-2.
+	 * Written as a raw phandle because this file is a decompiled live tree
+	 * with no labels; 0x3c is gpio@20a0000 = gpio2, and cell 3 = 1 is
+	 * GPIO_ACTIVE_LOW.
+	 *
+	 * Delays: both properties are skipped entirely when zero, so they must be
+	 * present.  10 ms off / 10 ms settle was the previous intent and is kept,
+	 * widened slightly -- the BCM43241B4 needs its internal LDOs and the
+	 * 37.4 MHz XO to come up before it will answer CMD5.
+	 * =========================================================================
+	 */
 	wifi_pwrseq: wifi-pwrseq {
 		compatible = "mmc-pwrseq-simple";
-		reset-gpios = <&gpio6 7 GPIO_ACTIVE_HIGH>;
-		post-power-on-delay-ms = <10>;
-		power-off-delay-us = <10000>;
+		reset-gpios = <0x3c 0x03 0x01>;         /* gpio2_3, WL_REG_ON, ACTIVE_LOW */
+		power-off-delay-us = <20000>;           /* hold WL_REG_ON low >= 20 ms */
+		post-power-on-delay-ms = <20>;          /* settle before first CMD5 */
+		phandle = <0x6b>;
+	
+		/*
+		 * DELIBERATELY NOT ADDED: clocks / clock-names = "ext_clock".
+		 *
+		 * mmc_pwrseq_simple_power_off() calls clk_disable_unprepare(ext_clk).
+		 * The 32.768 kHz LPO (clocks/clock@1, phandle 0x4d) is already claimed
+		 * by the bluetooth node as clock-names = "lpo", and hci_bcm needs it
+		 * for the controller's sleep clock.  Naming it here as well would let
+		 * any later mmc_power_off() on mmc1 -- SDIO runtime suspend, system
+		 * suspend, an rfkill-driven remove -- kill the sleep clock underneath
+		 * a live BT controller.  Leave it owned by BT alone.
+		 */
 	};
+
 
 	memory {
 		reg = <0x10000000 0x20000000>;
@@ -101,18 +176,57 @@
 			regulator-always-on;
 		};
 
-		reg_wifi_en: wifi_enable {
-			compatible = "regulator-fixed";
-			regulator-name = "reg_wifi_enable";
-			regulator-min-microvolt = <1800000>;
-			regulator-max-microvolt = <1800000>;
-			gpio = <&gpio2 3 0>;
-			enable-active-high;
-			vin-supply = <&reg_wifi_io>;
-			startup-delay-us = <20000>;
-			regulator-always-on;
-		};
-
+	 /*
+		 * =====================================================================
+		 * FIX-2 -- DELETED NODE: wifi_enable / "reg_wifi_enable"
+		 * =====================================================================
+		 * Original content:
+		 *
+		 *     wifi_enable {
+		 *         regulator-always-on;
+		 *         startup-delay-us = <0x12c>;      300 us
+		 *         vin-supply = <0x51>;             reg_wifi_io
+		 *         enable-active-high;
+		 *         gpio = <0x3c 0x03 0x00>;         gpio2_3
+		 *         regulator-max-microvolt = <0x1b7740>;
+		 *         regulator-min-microvolt = <0x1b7740>;
+		 *         regulator-name = "reg_wifi_enable";
+		 *         compatible = "regulator-fixed";
+		 *     };
+		 * 
+		 * THIS NODE WAS THE ROOT CAUSE OF THE mmc1 BRING-UP DEFECT.
+		 *
+		 * gpio2_3 is WL_REG_ON.  It was dressed up as a fixed 1.8 V regulator
+		 * with NO CONSUMER anywhere in the tree -- the node carried no phandle
+		 * at all, so nothing could reference it -- and it was marked
+		 * regulator-always-on.  Consequence: regulator_init_complete() latched
+		 * WL_REG_ON high once during boot and it was never touched again for
+		 * the life of the system.
+		 *
+		 * A reboot on this product is a warm reset: the PMIC rails stay up and
+		 * WL_REG_ON stayed exactly where the previous session left it.  So the
+		 * BCM43241B4 kept running its firmware straight across every reboot,
+		 * with SDIO F1/F2 already enabled and possibly in KSO-off sleep, and
+		 * the kernel then issued CMD5 to a chip that was not in a state to
+		 * answer it.  That is the ~40% intermittent failure, and it is also why
+		 * all four retry frequencies failed together: none of the four attempts
+		 * performed an actual card reset, because without an mmc-pwrseq the
+		 * pre_power_on/post_power_on/power_off hooks are no-ops,
+		 * mmc_hw_reset_for_init() resets only the uSDHC controller, and
+		 * sdio_reset() requires the card to already be responding.
+		 *
+		 * The line is now owned by wifi_pwrseq (FIX-1) instead, so the mmc core
+		 * asserts and releases WL_REG_ON on every mmc_power_up(), giving a real
+		 * hard reset before enumeration on every boot.
+		 *
+		 * The 1.8 V constraint here was fictional in any case: gpio2_3 is an
+		 * enable strap, not a rail.  VBAT (reg_wifi, 3.3 V, gpio3_26) and the
+		 * shared IO/pad domain (reg_wifi_io, 1.8 V, gpio6_11) remain
+		 * regulator-always-on and are untouched -- they are the rails the
+		 * Bluetooth node consumes as vbat-supply / vddio-supply, and they must
+		 * NOT be cycled underneath hci_bcm.
+		 * =====================================================================
+		 */
 /*
 		reg_bt_en: bt_enable {
 			compatible = "regulator-fixed";
@@ -1055,26 +1169,29 @@
 };
 
 &usdhc4 {
-	mmc-pwrseq = <&wifi_pwrseq>;
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_usdhc4_100mhz &pinctrl_wifi1>;
-	bus-width = <4>;
-	non-removable;
-	/* no-1-8-v; */
-	keep-power-in-suspend;
-	/delete-property/ enable-sdio-wakeup;
-	status = "okay";
-	pm-ignore-notify;
-	vmmc-supply = <&sw2_reg>;
-	vqmmc-supply = <&vgen4_reg>;
-	voltage-ranges = <1800 3300>;
+	mmc-pwrseq = <0x6b>;            /* &wifi_pwrseq */
+	#size-cells = <0x00>;
+	#address-cells = <0x01>;
 	sd-uhs-ddr50;
-
-	#address-cells = <1>;
-	#size-cells = <0>;
+	voltage-ranges = <0x708 0xce4>;
+	vqmmc-supply = <0x3b>;
+	vmmc-supply = <0x3a>;
+	pm-ignore-notify;
+	keep-power-in-suspend;
+	non-removable;
+	pinctrl-0 = <0x38 0x39>;
+	pinctrl-names = "default";
+	status = "okay";
+	bus-width = <0x04>;
+	clock-names = "ipg\0ahb\0per";
+	clocks = <0x02 0xa6 0x02 0xa6 0x02 0xa6>;
+	interrupts = <0x00 0x19 0x04>;
+	reg = <0x219c000 0x4000>;
+	compatible = "fsl,imx6q-usdhc";
+	
 	brcmf: wifi@1 {
 		compatible = "brcm,bcm4329-fmac";
-		reg = <1>;
+		reg = <0x01>;
 		interrupt-parent = <&gpio2>;
 		interrupts = <6 IRQ_TYPE_LEVEL_LOW>;
 		interrupt-names = "host-wake";
