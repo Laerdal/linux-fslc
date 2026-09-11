@@ -90,10 +90,9 @@
 	 */
 	wifi_pwrseq: wifi-pwrseq {
 		compatible = "mmc-pwrseq-simple";
-		reset-gpios = <0x3c 0x03 0x01>;         /* gpio2_3, WL_REG_ON, ACTIVE_LOW */
+		reset-gpios = <&gpio2 3 GPIO_ACTIVE_LOW>; /* gpio2_3, WL_REG_ON, ACTIVE_LOW */
 		power-off-delay-us = <20000>;           /* hold WL_REG_ON low >= 20 ms */
 		post-power-on-delay-ms = <20>;          /* settle before first CMD5 */
-		phandle = <0x6b>;
 	
 		/*
 		 * DELIBERATELY NOT ADDED: clocks / clock-names = "ext_clock".
@@ -1133,7 +1132,7 @@
 
 	bluetooth {
 		compatible = "brcm,bcm43241-bt";
-		clocks = <&bt_clk 0>;
+		clocks = <&bt_clk>;
 		clock-names = "lpo";
 		max-speed = <921600>;
 		device-wakeup-gpios = <&gpio6 8 GPIO_ACTIVE_HIGH>;
@@ -1169,26 +1168,23 @@
 };
 
 &usdhc4 {
-	mmc-pwrseq = <0x6b>;            /* &wifi_pwrseq */
-	#size-cells = <0x00>;
-	#address-cells = <0x01>;
-	sd-uhs-ddr50;
-	voltage-ranges = <0x708 0xce4>;
-	vqmmc-supply = <0x3b>;
-	vmmc-supply = <0x3a>;
-	pm-ignore-notify;
-	keep-power-in-suspend;
-	non-removable;
-	pinctrl-0 = <0x38 0x39>;
 	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_usdhc4_100mhz &pinctrl_wifi1>;
+	bus-width = <4>;
+	non-removable;
+	keep-power-in-suspend;
+	/*delete-property enable-sdio-wakeup; */
+	pm-ignore-notify;
+	vmmc-supply = <&reg_wifi>;      /* old value: <&sw2_reg>;   */
+	vqmmc-supply = <&reg_wifi_io>;  /* old value: <&vgen4_reg>; */
+	voltage-ranges = <1800 3300>;
+	sd-uhs-ddr50;
+	mmc-pwrseq = <&wifi_pwrseq>;
 	status = "okay";
-	bus-width = <0x04>;
-	clock-names = "ipg\0ahb\0per";
-	clocks = <0x02 0xa6 0x02 0xa6 0x02 0xa6>;
-	interrupts = <0x00 0x19 0x04>;
-	reg = <0x219c000 0x4000>;
-	compatible = "fsl,imx6q-usdhc";
-	
+
+	#address-cells = <1>;
+	#size-cells = <0>;
+
 	brcmf: wifi@1 {
 		compatible = "brcm,bcm4329-fmac";
 		reg = <0x01>;
@@ -1269,3 +1265,4 @@
 &snvs_poweroff {
 	status = "okay";
 };
+

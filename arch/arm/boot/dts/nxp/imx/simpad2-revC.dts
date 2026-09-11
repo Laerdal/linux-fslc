@@ -28,9 +28,9 @@
 
 	wifi_pwrseq: wifi-pwrseq {
 		compatible = "mmc-pwrseq-simple";
-		reset-gpios = <&gpio6 7 GPIO_ACTIVE_HIGH>;
-		post-power-on-delay-ms = <10>;
-		power-off-delay-us = <10000>;
+		reset-gpios = <&gpio2 3 GPIO_ACTIVE_LOW>; /* gpio2_3, WL_REG_ON, ACTIVE_LOW */
+		power-off-delay-us = <20000>;
+		post-power-on-delay-ms = <20>;
 	};
 
 	memory {
@@ -86,18 +86,57 @@
 			regulator-always-on;
 		};
 
-		reg_wifi_en: wifi_enable {
-			compatible = "regulator-fixed";
-			regulator-name = "reg_wifi_enable";
-			regulator-min-microvolt = <1800000>;
-			regulator-max-microvolt = <1800000>;
-			gpio = <&gpio2 3 0>;
-			enable-active-high;
-			vin-supply = <&reg_wifi_io>;
-			startup-delay-us = <300>;
-			regulator-always-on;
-		};
-
+	 /*
+		 * =====================================================================
+		 * FIX-2 -- DELETED NODE: wifi_enable / "reg_wifi_enable"
+		 * =====================================================================
+		 * Original content:
+		 *
+		 *     wifi_enable {
+		 *         regulator-always-on;
+		 *         startup-delay-us = <0x12c>;      300 us
+		 *         vin-supply = <0x51>;             reg_wifi_io
+		 *         enable-active-high;
+		 *         gpio = <0x3c 0x03 0x00>;         gpio2_3
+		 *         regulator-max-microvolt = <0x1b7740>;
+		 *         regulator-min-microvolt = <0x1b7740>;
+		 *         regulator-name = "reg_wifi_enable";
+		 *         compatible = "regulator-fixed";
+		 *     };
+		 * 
+		 * THIS NODE WAS THE ROOT CAUSE OF THE mmc1 BRING-UP DEFECT.
+		 *
+		 * gpio2_3 is WL_REG_ON.  It was dressed up as a fixed 1.8 V regulator
+		 * with NO CONSUMER anywhere in the tree -- the node carried no phandle
+		 * at all, so nothing could reference it -- and it was marked
+		 * regulator-always-on.  Consequence: regulator_init_complete() latched
+		 * WL_REG_ON high once during boot and it was never touched again for
+		 * the life of the system.
+		 *
+		 * A reboot on this product is a warm reset: the PMIC rails stay up and
+		 * WL_REG_ON stayed exactly where the previous session left it.  So the
+		 * BCM43241B4 kept running its firmware straight across every reboot,
+		 * with SDIO F1/F2 already enabled and possibly in KSO-off sleep, and
+		 * the kernel then issued CMD5 to a chip that was not in a state to
+		 * answer it.  That is the ~40% intermittent failure, and it is also why
+		 * all four retry frequencies failed together: none of the four attempts
+		 * performed an actual card reset, because without an mmc-pwrseq the
+		 * pre_power_on/post_power_on/power_off hooks are no-ops,
+		 * mmc_hw_reset_for_init() resets only the uSDHC controller, and
+		 * sdio_reset() requires the card to already be responding.
+		 *
+		 * The line is now owned by wifi_pwrseq (FIX-1) instead, so the mmc core
+		 * asserts and releases WL_REG_ON on every mmc_power_up(), giving a real
+		 * hard reset before enumeration on every boot.
+		 *
+		 * The 1.8 V constraint here was fictional in any case: gpio2_3 is an
+		 * enable strap, not a rail.  VBAT (reg_wifi, 3.3 V, gpio3_26) and the
+		 * shared IO/pad domain (reg_wifi_io, 1.8 V, gpio6_11) remain
+		 * regulator-always-on and are untouched -- they are the rails the
+		 * Bluetooth node consumes as vbat-supply / vddio-supply, and they must
+		 * NOT be cycled underneath hci_bcm.
+		 * =====================================================================
+		 */
 /*
 		reg_bt_en: bt_enable {
 			compatible = "regulator-fixed";
@@ -930,7 +969,6 @@
 };
 
 &usdhc4 {
-	mmc-pwrseq = <&wifi_pwrseq>;
 	status = "disabled";
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usdhc4_100mhz &pinctrl_wifi1>;
@@ -938,19 +976,21 @@
 	non-removable;
 	/* no-1-8-v; */
 	keep-power-in-suspend;
-	/delete-property/ enable-sdio-wakeup;
-	status = "okay";
+	/*delete-property enable-sdio-wakeup; */
 	pm-ignore-notify;
-	vmmc-supply = <&sw2_reg>;
-	vqmmc-supply = <&vgen4_reg>;
+	vmmc-supply = <&reg_wifi>;      /* old value: <&sw2_reg>;   */
+	vqmmc-supply = <&reg_wifi_io>;  /* old value: <&vgen4_reg>; */
 	voltage-ranges = <1800 3300>;
 	sd-uhs-ddr50;
+	mmc-pwrseq = <&wifi_pwrseq>;
+	status = "okay";
 
 	#address-cells = <1>;
 	#size-cells = <0>;
+	
 	brcmf: wifi@1 {
 		compatible = "brcm,bcm4329-fmac";
-		reg = <1>;
+		reg = <0x01>;
 		interrupt-parent = <&gpio2>;
 		interrupts = <6 IRQ_TYPE_LEVEL_LOW>;
 		interrupt-names = "host-wake";
