@@ -20,6 +20,13 @@
 		mmc1 = &usdhc4;
 	};
 
+	wifi_pwrseq: wifi-pwrseq {
+		compatible = "mmc-pwrseq-simple";
+		reset-gpios = <&gpio2 3 GPIO_ACTIVE_LOW>; /* gpio2_3, WL_REG_ON, ACTIVE_LOW */
+		post-power-on-delay-ms = <20>;
+		power-off-delay-us = <20000>;
+	};
+
 	memory {
 		reg = <0x10000000 0x20000000>;
 	};
@@ -63,6 +70,7 @@
 			regulator-always-on;
 		};
 
+/*
 		reg_wifi_en: wifi_enable {
 			compatible = "regulator-fixed";
 			regulator-name = "reg_wifi_enable";
@@ -74,6 +82,8 @@
 			startup-delay-us = <300>;
 			regulator-always-on;
 		};
+*/
+
 /*
 		reg_bt_en: bt_enable {
 			compatible = "regulator-fixed";
@@ -863,7 +873,7 @@
 
 	bluetooth {
 		compatible = "brcm,bcm43241-bt";
-		clocks = <&bt_clk 0>;
+		clocks = <&bt_clk>;
 		clock-names = "lpo";
 		max-speed = <921600>;
 		device-wakeup-gpios = <&gpio6 8 GPIO_ACTIVE_HIGH>;
@@ -894,17 +904,19 @@
 };
 
 &usdhc4 {
+	mmc-pwrseq = <&wifi_pwrseq>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usdhc4 &pinctrl_wifi1>;
 	bus-width = <4>;
 	non-removable;
 	keep-power-in-suspend;
-	/delete-property/ enable-sdio-wakeup;
+	/*delete-property enable-sdio-wakeup; */
 	status = "okay";
 	pm-ignore-notify;
-	vmmc-supply = <&sw2_reg>;
-	vqmmc-supply = <&sw2_reg>;
-	voltage-ranges = <3300 3300>;
+	vmmc-supply = <&reg_wifi>;      /* old value: <&sw2_reg>;   */
+	vqmmc-supply = <&reg_wifi_io>;  /* old value: <&vgen4_reg>; */
+	voltage-ranges = <1800 3300>;   /* old value: <3300 3300>   */
+	sd-uhs-ddr50;
 
 	#address-cells = <1>;
 	#size-cells = <0>;
