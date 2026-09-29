@@ -356,8 +356,15 @@ static int pcm1681_i2c_probe(struct i2c_client *client)
 		if (PTR_ERR(priv->clk) == -EPROBE_DEFER)
 			return -EPROBE_DEFER;
 	} else {
-		clk_prepare_enable(priv->clk);
-		dev_info(&client->dev, "Got mclk at rate %ld\n", clk_get_rate(priv->clk));
+		ret = clk_prepare_enable(priv->clk);
+		if (ret) {
+			dev_err(&client->dev, "Failed to enable mclk: %d\n", ret);
+			return ret;
+		}
+
+		dev_info(&client->dev, "Enabled mclk at rate %lu\n",
+			clk_get_rate(priv->clk));
+
 	}
 
 	priv->regmap = devm_regmap_init_i2c(client, &pcm1681_regmap);
