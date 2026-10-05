@@ -381,6 +381,22 @@ static int pcm1681_i2c_probe(struct i2c_client *client)
 		&pcm1681_dai, 1);
 }
 
+static void pcm1681_i2c_shutdown(struct i2c_client *client)
+{
+	struct pcm1681_private *priv = i2c_get_clientdata(client);
+
+	/* Silence the codec so no pop/click escapes on power off. */
+	regmap_write(priv->regmap, PCM1681_SOFT_MUTE, PCM1681_SOFT_MUTE_ALL);
+}
+
+static void pcm1681_i2c_remove(struct i2c_client *client)
+{
+	struct pcm1681_private *priv = i2c_get_clientdata(client);
+
+	if (!IS_ERR(priv->clk))
+		clk_disable_unprepare(priv->clk);
+}
+
 static struct i2c_driver pcm1681_i2c_driver = {
 	.driver = {
 		.name	= "pcm1681",
@@ -388,6 +404,8 @@ static struct i2c_driver pcm1681_i2c_driver = {
 	},
 	.id_table	= pcm1681_i2c_id,
 	.probe		= pcm1681_i2c_probe,
+	.remove		= pcm1681_i2c_remove,
+	.shutdown	= pcm1681_i2c_shutdown,
 };
 
 module_i2c_driver(pcm1681_i2c_driver);

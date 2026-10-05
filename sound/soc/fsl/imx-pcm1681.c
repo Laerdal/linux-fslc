@@ -341,9 +341,22 @@ cleanup:
 
 static int imx_pcm1681_remove(struct platform_device *pdev)
 {
+	struct snd_soc_card *card = platform_get_drvdata(pdev);
+	struct imx_pcm1681_data *data = snd_soc_card_get_drvdata(card);
+
+	/* Ensure the amps are off when the driver is unbound. */
+	imx_pcm1681_set_amps(data, true);
 	return 0;
 }
 
+static void imx_pcm1681_platform_shutdown(struct platform_device *pdev)
+{
+	struct snd_soc_card *card = platform_get_drvdata(pdev);
+	struct imx_pcm1681_data *data = snd_soc_card_get_drvdata(card);
+
+	/* Silence the amps on system power off so no pop/click escapes. */
+	imx_pcm1681_set_amps(data, true);
+}
 
 
 static struct platform_driver imx_pcm1681_driver = {
@@ -355,6 +368,7 @@ static struct platform_driver imx_pcm1681_driver = {
 	},
 	.probe = imx_pcm1681_probe,
 	.remove = imx_pcm1681_remove,
+	.shutdown = imx_pcm1681_platform_shutdown,
 };
 module_platform_driver(imx_pcm1681_driver);
 
