@@ -347,6 +347,8 @@ MODULE_DEVICE_TABLE(i2c, pcm1681_i2c_id);
 static int pcm1681_i2c_probe(struct i2c_client *client)
 {
 	int ret;
+	unsigned int val;
+	int tries;
 	struct pcm1681_private *priv;
 	priv = devm_kzalloc(&client->dev, sizeof(*priv), GFP_KERNEL);
 	if (!priv)
@@ -371,6 +373,44 @@ static int pcm1681_i2c_probe(struct i2c_client *client)
 	if (IS_ERR(priv->regmap)) {
 		ret = PTR_ERR(priv->regmap);
 		dev_err(&client->dev, "Failed to create regmap: %d\n", ret);
+		return ret;
+	}
+
+	/*
+	 * On some units, after a warm reboot, the codec latches a bad
+	 * MCLK/PLL state during the SoC boot window and NACKs its own
+	 * address on the first I2C transaction (rc=-ENXIO). A cold
+	 * power-cycle always clears the latch. Re-gate MCLK to release it
+	 * and verify the codec answers; if it still NACKs, fail probe so
+	 * the boot retry path can recover. The healthy path costs exactly
+	 * one I2C read and never touches the clk.
+	 */
+	for (tries = 0; tries < 3; tries++) {
+		ret = regmap_read(priv->regmap, PCM1681_FMT_CONTROL, &val);
+		if (ret != -ENXIO)
+			break;
+
+		dev_warn(&client->dev,
+			 "codec NACK at probe (rc=%d); re-gating mclk (attempt %d/3)\n",
+			 ret, tries + 1);
+		if (!IS_ERR(priv->clk)) {
+			clk_disable_unprepare(priv->clk);
+			msleep(30);
+			ret = clk_prepare_enable(priv->clk);
+			if (ret) {
+				dev_err(&client->dev, "mclk re-enable failed: %d\n", ret);
+				return ret;
+			}
+			msleep(20);
+		} else {
+			msleep(50);
+		}
+	}
+
+	if (tries == 3 && ret == -ENXIO) {
+		dev_err(&client->dev,
+			"codec still NACKing I2C after mclk re-gate; probe failed (rc=%d)\n",
+			ret);
 		return ret;
 	}
 
