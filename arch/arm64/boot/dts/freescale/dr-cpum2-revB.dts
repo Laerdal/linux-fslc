@@ -15,3 +15,17 @@
 #include <dt-bindings/usb/pd.h>
 #include "imx8mp-nominal.dtsi"
 #include "dr-cpum2-revB.dtsi"
+
+&media_blk_ctrl {
+	power-domains = <&pgc_mediamix>,
+			<&pgc_mipi_phy1>,
+			<&pgc_mipi_phy1>,
+			<&pgc_mediamix>,
+			<&pgc_mediamix>,
+			<&pgc_mipi_phy2>,
+			<&pgc_mediamix>,
+			<&pgc_mipi_phy2>;
+	power-domain-names = "bus", "mipi-dsi1", "mipi-csi1",
+			     "lcdif1", "isi", "mipi-csi2",
+			     "lcdif2", "mipi-dsi2";
+};
