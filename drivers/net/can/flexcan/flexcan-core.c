@@ -16,6 +16,7 @@
 #include <linux/can/error.h>
 #include <linux/clk.h>
 #include <linux/delay.h>
+#include <linux/gpio/consumer.h>
 #include <linux/firmware/imx/sci.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
@@ -650,6 +651,22 @@ static inline int flexcan_transceiver_disable(const struct flexcan_priv *priv)
 		return 0;
 
 	return regulator_disable(priv->reg_xceiver);
+}
+
+/* STBY controls the CAN transceiver: high = standby (TXD released),
+ * low = active. Drive it alongside the transceiver so the netdev state
+ * alone defines the physical line.
+ */
+static void flexcan_stb_set_active(const struct flexcan_priv *priv)
+{
+	if (priv->stb)
+		gpiod_set_value(priv->stb, 0);
+}
+
+static void flexcan_stb_set_standby(const struct flexcan_priv *priv)
+{
+	if (priv->stb)
+		gpiod_set_value(priv->stb, 1);
 }
 
 static int flexcan_chip_enable(struct flexcan_priv *priv)
@@ -1740,6 +1757,8 @@ static int flexcan_open(struct net_device *dev)
 	if (err)
 		goto out_close;
 
+	flexcan_stb_set_active(priv);
+
 	err = flexcan_rx_offload_setup(dev);
 	if (err)
 		goto out_transceiver_disable;
@@ -1782,6 +1801,7 @@ static int flexcan_open(struct net_device *dev)
  out_can_rx_offload_del:
 	can_rx_offload_del(&priv->offload);
  out_transceiver_disable:
+	flexcan_stb_set_standby(priv);
 	flexcan_transceiver_disable(priv);
  out_close:
 	close_candev(dev);
@@ -1808,6 +1828,7 @@ static int flexcan_close(struct net_device *dev)
 	flexcan_chip_stop_disable_on_error(dev);
 
 	can_rx_offload_del(&priv->offload);
+	flexcan_stb_set_standby(priv);
 	flexcan_transceiver_disable(priv);
 	close_candev(dev);
 
@@ -2067,6 +2088,7 @@ static int flexcan_probe(struct platform_device *pdev)
 	struct net_device *dev;
 	struct flexcan_priv *priv;
 	struct regulator *reg_xceiver;
+	struct gpio_desc *stb = NULL;
 	struct clk *clk_ipg = NULL, *clk_per = NULL;
 	struct flexcan_regs __iomem *regs;
 	struct flexcan_platform_data *pdata;
@@ -2081,6 +2103,14 @@ static int flexcan_probe(struct platform_device *pdev)
 		reg_xceiver = NULL;
 	else if (IS_ERR(reg_xceiver))
 		return PTR_ERR(reg_xceiver);
+
+	stb = devm_gpiod_get_optional(&pdev->dev, "stb", GPIOD_OUT_LOW);
+	if (PTR_ERR(stb) == -EPROBE_DEFER)
+		return -EPROBE_DEFER;
+	else if (PTR_ERR(stb) == -ENOENT)
+		stb = NULL;
+	else if (IS_ERR(stb))
+		return PTR_ERR(stb);
 
 	if (pdev->dev.of_node) {
 		of_property_read_u32(pdev->dev.of_node,
@@ -2186,6 +2216,7 @@ static int flexcan_probe(struct platform_device *pdev)
 	priv->clk_per = clk_per;
 	priv->clk_src = clk_src;
 	priv->reg_xceiver = reg_xceiver;
+	priv->stb = stb;
 
 	if (priv->devtype_data.quirks & FLEXCAN_QUIRK_NR_IRQ_3) {
 		priv->irq_boff = platform_get_irq(pdev, 1);

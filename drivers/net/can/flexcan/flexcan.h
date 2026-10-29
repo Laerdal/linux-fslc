@@ -103,6 +103,7 @@ struct flexcan_priv {
 	struct clk *clk_per;
 	struct flexcan_devtype_data devtype_data;
 	struct regulator *reg_xceiver;
+	struct gpio_desc *stb;
 	struct flexcan_stop_mode stm;
 
 	int irq_boff;
